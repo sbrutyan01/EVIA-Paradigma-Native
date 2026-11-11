@@ -1,0 +1,487 @@
+// ===================== EVIA Paradigma native runtime for AVR chips =====================
+// Print and Input on the UART (115200 baud, lines end with CR LF), millis on timer 0, delay, pins, PWM, the ADC.
+// The same names as the Linux runtime, so a program is lowered the same way for both. Numbers are 32-bit floats,
+// written as EVIA Paradigma's AVR C runtime writes them.
+
+// ---------------------------------------------------------------- UART
+
+fn uart_init(baud) {
+    uart_ubrr((F_CPU + 4 * baud) / (8 * baud) - 1);      // double speed (U2X)
+}
+
+/** The UART with this baud-rate register value (worked out when the program is built, where it can be). */
+fn uart_ubrr(ubrr) {
+    store8(UBRRH, (ubrr >> 8) & 0x7F);
+    store8(UBRRL, ubrr & 255);
+    store8(UCSRA, 2);
+    store8(UCSRB, 0x18);                                  // receiver and transmitter
+    store8(UCSRC, URSEL | 6);                             // 8 data bits, no parity, 1 stop bit
+}
+
+fn uart_put(c) {
+    while ((load8(UCSRA) & 0x20) == 0) { }
+    store8(UDR, c);
+}
+
+fn uart_get(): int {
+    while ((load8(UCSRA) & 0x80) == 0) { }
+    return load8(UDR);
+}
+
+/** The next received byte, or -1 when none has arrived (UART Read). */
+fn uart_read(): int {
+    if ((load8(UCSRA) & 0x80) != 0) { return load8(UDR); }
+    return -1;
+}
+
+fn out_byte(c) {
+    if (c == 10) { uart_put(13); }
+    uart_put(c);
+}
+
+/** Text kept in flash: [length: 2 bytes][UTF-8 bytes]. */
+fn out_str(p) {
+    var n = loadp16(p);
+    var i = 0;
+    while (i < n) {
+        out_byte(loadp8(p + 2 + i));
+        i = i + 1;
+    }
+}
+
+fn out_line(p) {
+    out_str(p);
+    out_byte(10);
+}
+
+/** Text in RAM, ended by a 0 byte. */
+fn out_ram(p) {
+    while (load8(p) != 0) {
+        out_byte(load8(p));
+        p = p + 1;
+    }
+}
+
+fn halt_program() {
+    halt();
+}
+
+fn exit_program(code) {
+    halt();
+}
+
+/** An error stops the program: the message on the UART, then the chip sleeps. */
+fn fail(msg) {
+    out_str(">> error: ");
+    out_line(msg);
+    halt();
+}
+
+// ---------------------------------------------------------------- memory, method calls
+
+buffer heap[HEAP];
+var heap_used: int;
+
+fn alloc(n): int {
+    n = (n + 3) & ~3;
+    if (heap_used + n > HEAP) { fail("out of memory for objects"); }
+    var p = heap + heap_used;
+    heap_used = heap_used + n;
+    return p;
+}
+
+var depth: int;
+
+fn enter() {
+    if (depth >= MAX_DEPTH) { fail("too many nested method calls (endless recursion?)"); }
+    depth = depth + 1;
+}
+
+fn leave() {
+    depth = depth - 1;
+}
+
+fn b2f(c): float {
+    if (c) { return 1.0; }
+    return 0.0;
+}
+
+// ---------------------------------------------------------------- time: millis on timer 0, as Arduino counts it
+
+var ms_count: int;
+var ms_fract: int;
+
+fn isr_timer0_ovf() {
+    ms_count = ms_count + MILLIS_INC;
+    ms_fract = ms_fract + FRACT_INC;
+    if (ms_fract >= 125) {
+        ms_fract = ms_fract - 125;
+        ms_count = ms_count + 1;
+    }
+}
+
+fn ms_now(): int {
+    cli();
+    var m = ms_count;
+    sei();
+    return m;
+}
+
+fn millis(): float {
+    return i2f(ms_now());
+}
+
+fn delay(ms: float) {
+    if (!(ms > 0.0)) { return; }
+    var n = f2i(ms);
+    var start = ms_now();
+    while (ms_now() - start < n) { }
+}
+
+fn runtime_init() {
+    chip_init();
+    uart_ubrr(UBRR_115200);
+}
+
+// ---------------------------------------------------------------- pins
+
+fn pin_bit(pin, which, value) {
+    if (pin < 0 || pin >= PIN_COUNT) { return; }
+    var code = loadp8(PIN_CODES + pin);
+    var reg = port_reg(code >> 4, which);
+    if (reg == 0) { return; }
+    var mask = 1 << (code & 15);
+    cli();
+    if (value) {
+        store8(reg, load8(reg) | mask);
+    } else {
+        store8(reg, load8(reg) & ~mask);
+    }
+    sei();
+}
+
+/** mode: 0 INPUT, 1 OUTPUT, 2 INPUT_PULLUP */
+fn pin_mode(pin, mode) {
+    pin_bit(pin, 0, mode == 1);
+    if (mode != 1) { pin_bit(pin, 1, mode == 2); }
+}
+
+fn digital_write(pin, high) {
+    pin_bit(pin, 1, high);
+}
+
+/** Digital Write in a program that also uses Analog Write: the pin's PWM output is disconnected first. */
+fn digital_write_pwm(pin, high) {
+    if (pin >= 0 && pin < PIN_COUNT) {
+        var t = loadp8(PIN_TIMERS + pin);
+        if (t != 0) { pwm_set(t, -1); }
+    }
+    pin_bit(pin, 1, high);
+}
+
+fn digital_read(pin): int {
+    if (pin < 0 || pin >= PIN_COUNT) { return 0; }
+    var code = loadp8(PIN_CODES + pin);
+    var reg = port_reg(code >> 4, 2);
+    if (reg == 0) { return 0; }
+    return (load8(reg) >> (code & 15)) & 1;
+}
+
+/** Connects (duty >= 0) or disconnects (-1) one PWM output. */
+fn pwm_channel(tccr, bit, ocr, duty) {
+    cli();
+    if (duty < 0) {
+        store8(tccr, load8(tccr) & ~(1 << bit));
+    } else {
+        store8(ocr, duty);
+        store8(tccr, load8(tccr) | (1 << bit));
+    }
+    sei();
+}
+
+/** Analog Write: PWM 0..255 where the pin has a timer output, else on (>= 128) or off; 0 and 255 are steady. */
+fn analog_write(pin, v) {
+    if (v < 0) { v = 0; }
+    if (v > 255) { v = 255; }
+    pin_mode(pin, 1);
+    var t = 0;
+    if (pin >= 0 && pin < PIN_COUNT) { t = loadp8(PIN_TIMERS + pin); }
+    if (t == 0 || v == 0 || v == 255) {
+        digital_write_pwm(pin, v >= 128);
+        return;
+    }
+    pwm_set(t, v);
+}
+
+/** Analog Read: 0..1023 from an analog pin (A0 ...) or ADC channel number. */
+fn analog_read(pin): int {
+    var ch = pin;
+    if (pin >= A0_PIN) { ch = pin - A0_PIN; }
+    store8(ADMUX, 0x40 | (ch & 7));
+    if (ADCSRB != 0) { store8(ADCSRB, (load8(ADCSRB) & ~8) | (ch & 8)); }
+    store8(ADCSRA, 0xC7);
+    while ((load8(ADCSRA) & 0x40) != 0) { }
+    var lo = load8(ADCL);
+    var hi = load8(ADCH);
+    return lo | (hi << 8);
+}
+
+// ---------------------------------------------------------------- numbers as text, as the AVR C runtime writes them
+
+buffer ndig[48];
+var ndn: int;
+
+// dig_from_int, dig_double and out_digits are in AVR assembly (AvrGen.assembly); these bodies say what they do.
+
+fn dig_from_int(u) {
+    ndn = 0;
+    if (u == 0) {
+        store8(ndig, 0);
+        ndn = 1;
+        return;
+    }
+    while (u > 0) {
+        store8(ndig + ndn, u % 10);
+        u = u / 10;
+        ndn = ndn + 1;
+    }
+}
+
+fn dig_double() {
+    var carry = 0;
+    var i = 0;
+    while (i < ndn) {
+        var v = load8(ndig + i) * 2 + carry;
+        carry = 0;
+        if (v >= 10) {
+            v = v - 10;
+            carry = 1;
+        }
+        store8(ndig + i, v);
+        i = i + 1;
+    }
+    if (carry) {
+        store8(ndig + ndn, 1);
+        ndn = ndn + 1;
+    }
+}
+
+/** The exact decimal digits of a whole, non-negative float (least significant first, in ndig). */
+fn int_digits(x: float) {
+    var b = bits(x);
+    var be = (b >>> 23) & 255;
+    if (be == 0) {
+        dig_from_int(0);
+        return;
+    }
+    var m = (b & 0x7FFFFF) | 0x800000;
+    var e = be - 150;
+    if (e < 0) {
+        m = m >>> (-e);
+        e = 0;
+    }
+    dig_from_int(m);
+    while (e > 0) {
+        dig_double();
+        e = e - 1;
+    }
+}
+
+/** x >= 0: whole when it is too big for a fraction, or when it survives the trip through an int. */
+fn f_is_whole(x: float): int {
+    if (x >= 8388608.0) { return 1; }
+    return i2f(f2i(x)) == x;
+}
+
+/** floor of a non-negative float, as digits. */
+fn floor_digits(x: float) {
+    if (x < 8388608.0) {
+        dig_from_int(f2i(x));
+    } else {
+        int_digits(x);
+    }
+}
+
+fn out_digits(from, to) {
+    var i = to;
+    while (i >= from) {
+        out_byte('0' + load8(ndig + i));
+        i = i - 1;
+    }
+}
+
+/** A number the way the interpreter prints it: whole numbers without ".0", others with up to 6 decimals ("0.25"),
+    very large or small ones as "1.5E10". */
+fn out_num(x: float) {
+    if (x != x) {
+        out_str("NaN");
+        return;
+    }
+    if (x < 0.0) {
+        out_byte('-');
+        x = -x;
+    }
+    if (x - x != 0.0) {
+        out_str("Infinity");
+        return;
+    }
+    if (f_is_whole(x) && x < 1000000000000000.0) {
+        int_digits(x);
+        out_digits(0, ndn - 1);
+        return;
+    }
+    var e = 0;
+    if (x >= 10000000.0 || x < 0.001) {
+        while (x >= 10.0) {
+            x = x / 10.0;
+            e = e + 1;
+        }
+        while (x < 1.0) {
+            x = x * 10.0;
+            e = e - 1;
+        }
+    }
+    floor_digits(x * 1000000.0 + 0.5);
+    // the whole part is the digits above the last six, the fraction those six
+    var whole_digits = ndn - 6;
+    if (e != 0 && whole_digits >= 2) {
+        out_str("1.0");
+        e = e + 1;
+    } else {
+        if (whole_digits <= 0) { out_byte('0'); } else { out_digits(6, ndn - 1); }
+        out_byte('.');
+        var last = 0;
+        var any = 0;
+        var i = 5;
+        while (i >= 0) {
+            if (i < ndn && load8(ndig + i) != 0) {
+                last = i;
+                any = 1;
+            }
+            i = i - 1;
+        }
+        if (!any) {
+            out_byte('0');
+        } else {
+            i = 5;
+            while (i >= last) {
+                var d = 0;
+                if (i < ndn) { d = load8(ndig + i); }
+                out_byte('0' + d);
+                i = i - 1;
+            }
+        }
+    }
+    if (e != 0) {
+        out_byte('E');
+        if (e < 0) {
+            out_byte('-');
+            e = -e;
+        }
+        dig_from_int(e);
+        out_digits(0, ndn - 1);
+    }
+}
+
+// ---------------------------------------------------------------- Input
+
+buffer line[32];
+
+/** One line from the UART (Enter); empty lines are skipped. */
+fn read_line() {
+    var n = 0;
+    while (1) {
+        var c = uart_get();
+        if (c == 10 || c == 13) {
+            if (n > 0) { break; }
+            continue;
+        }
+        if (n < 31) {
+            store8(line + n, c);
+            n = n + 1;
+        }
+    }
+    store8(line + n, 0);
+}
+
+var parse_ok: int;
+
+fn is_digit(c): int {
+    return c >= '0' && c <= '9';
+}
+
+/** The number in line (spaces around it allowed): digits, a point, an exponent. */
+fn parse_line(): float {
+    var p = line;
+    parse_ok = 0;
+    while (load8(p) == ' ' || load8(p) == 9) { p = p + 1; }
+    var neg = 0;
+    if (load8(p) == '-' || load8(p) == '+') {
+        neg = load8(p) == '-';
+        p = p + 1;
+    }
+    var v = 0.0;
+    var seen = 0;
+    var scale = 0;
+    while (is_digit(load8(p))) {
+        v = v * 10.0 + i2f(load8(p) - '0');
+        seen = 1;
+        p = p + 1;
+    }
+    if (load8(p) == '.') {
+        p = p + 1;
+        while (is_digit(load8(p))) {
+            v = v * 10.0 + i2f(load8(p) - '0');
+            scale = scale - 1;
+            seen = 1;
+            p = p + 1;
+        }
+    }
+    if (!seen) { return 0.0; }
+    if (load8(p) == 'e' || load8(p) == 'E') {
+        p = p + 1;
+        var eneg = 0;
+        if (load8(p) == '-' || load8(p) == '+') {
+            eneg = load8(p) == '-';
+            p = p + 1;
+        }
+        if (!is_digit(load8(p))) { return 0.0; }
+        var ev = 0;
+        while (is_digit(load8(p))) {
+            if (ev < 1000) { ev = ev * 10 + load8(p) - '0'; }
+            p = p + 1;
+        }
+        if (eneg) { ev = -ev; }
+        scale = scale + ev;
+    }
+    while (load8(p) == ' ' || load8(p) == 9) { p = p + 1; }
+    if (load8(p) != 0) { return 0.0; }
+    while (scale > 0) {
+        v = v * 10.0;
+        scale = scale - 1;
+    }
+    while (scale < 0) {
+        v = v / 10.0;
+        scale = scale + 1;
+    }
+    parse_ok = 1;
+    if (neg) { return -v; }
+    return v;
+}
+
+/** Input block (fast values): asks on the UART; the answer must be a number. */
+fn input_num(name): float {
+    out_str("Enter a value for ");
+    out_str(name);
+    out_str(": ");
+    read_line();
+    var x = parse_line();
+    if (!parse_ok) {
+        out_str(">> error: '");
+        out_ram(line);
+        out_str("' is not a number");
+        out_byte(10);
+        halt();
+    }
+    return x;
+}

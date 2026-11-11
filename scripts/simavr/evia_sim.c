@@ -11,6 +11,7 @@
  *                      2-second period - the same button the interpreter's simulated board has
  *     --adc 7          feed ADC channel 7 with the interpreter's analog signal: 0..1023..0 over 4 s
  *     --uart-loop      wire the UART's TX to its RX (what the interpreter's serial port does)
+ *     --input FILE     type FILE into the first UART, a byte every millisecond (a program's Input)
  *     --i2c 80         an I2C device at 7-bit address 80 with 256 registers, all 0 at the start - the
  *                      device the interpreter's simulated board has (SPI needs nothing: the chip's own
  *                      model already returns the byte it sent)
@@ -109,6 +110,8 @@ static void pin_changed(struct avr_irq_t *irq, uint32_t value, void *param) {
 
 /* The button: released (pin pulled high) except during the second half of each 2-second period. */
 static avr_irq_t *button;
+static char button_port;
+static int button_bit;
 static int button_down = -1;
 
 static avr_cycle_count_t button_tick(struct avr_t *a, avr_cycle_count_t when, void *param) {
@@ -117,6 +120,10 @@ static avr_cycle_count_t button_tick(struct avr_t *a, avr_cycle_count_t when, vo
     int down = now_ms() % 2000 >= 1000;
     if (down != button_down) {
         button_down = down;
+        /* a pressed button holds the pin low, as an external pull: otherwise a write to its port (the LED on
+           another pin of it) would put the pin's pull-up level back */
+        avr_ioport_external_t e = {.name = button_port, .mask = down ? 1 << button_bit : 0, .value = 0};
+        avr_ioctl(avr, AVR_IOCTL_IOPORT_SET_EXTERNAL(button_port), &e);
         avr_raise_irq(button, down ? 0 : 1);
     }
     return when + avr->frequency / 1000;   /* again in 1 ms */
@@ -131,6 +138,18 @@ static avr_cycle_count_t adc_tick(struct avr_t *a, avr_cycle_count_t when, void 
     unsigned long t = now_ms() % 4096;
     unsigned long value = t < 2048 ? t / 2 : (4095 - t) / 2;
     avr_raise_irq(adc, (uint32_t) ((value * 5000 + 1022) / 1023));
+    return when + avr->frequency / 1000;
+}
+
+/* ---- --input: the file's bytes into UART 0, one a millisecond (slower than the chip reads them) */
+static FILE *input;
+
+static avr_cycle_count_t input_tick(struct avr_t *a, avr_cycle_count_t when, void *param) {
+    (void) a;
+    (void) param;
+    int c = fgetc(input);
+    if (c == EOF) return 0;
+    avr_raise_irq(uart_in[0], (uint32_t) c);
     return when + avr->frequency / 1000;
 }
 
@@ -154,7 +173,7 @@ static void quiet_log(avr_t *avr, const int level, const char *format, va_list a
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        fprintf(stderr, "usage: evia_sim MCU program.hex [--seconds N] [--watch D5] [--button D4]\n");
+        fprintf(stderr, "usage: evia_sim MCU program.hex [--seconds N] [--watch D5] [--button D4] [--adc 0] [--uart-loop] [--i2c 80] [--input FILE]\n");
         return 2;
     }
     double seconds = 120;
@@ -201,12 +220,21 @@ int main(int argc, char **argv) {
         }
         if (!strcmp(argv[i], "--i2c")) {
             i2c_attach(atoi(argv[i + 1]));
+        } else if (!strcmp(argv[i], "--input")) {
+            input = fopen(argv[i + 1], "rb");
+            if (!input || !uart_in[0]) {
+                fprintf(stderr, "evia_sim: can't type %s into the UART\n", argv[i + 1]);
+                return 2;
+            }
+            avr_cycle_timer_register(avr, avr->frequency / 100, input_tick, NULL);
         } else if (!strcmp(argv[i], "--seconds")) {
             seconds = atof(argv[i + 1]);
         } else if (!strcmp(argv[i], "--watch")) {
             avr_irq_register_notify(pin_irq(argv[i + 1]), pin_changed, argv[i + 1]);
         } else if (!strcmp(argv[i], "--button")) {
             button = pin_irq(argv[i + 1]);
+            button_port = argv[i + 1][0];
+            button_bit = argv[i + 1][1] - '0';
             button_tick(avr, avr->cycle, NULL);
             avr_cycle_timer_register(avr, avr->frequency / 1000, button_tick, NULL);
         } else if (!strcmp(argv[i], "--adc")) {

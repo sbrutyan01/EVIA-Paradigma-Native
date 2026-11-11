@@ -151,6 +151,16 @@ final class NativeLang {
     private final Map<String, Fn> fns = new LinkedHashMap<>();
     private final Map<String, String> strings = new HashMap<>();    // text -> label, for string literals in code
     private final NativeAsm asm = new NativeAsm();
+    /** For other back ends (AvrGen): buffer sizes and the text of named strings, as parsed. */
+    final Map<String, Long> bufferSize = new LinkedHashMap<>();
+    final Map<String, String> stringText = new LinkedHashMap<>();
+    /** table NAME = 1, 2, 3; : bytes (in flash on AVR); NAME is their address. */
+    final Map<String, byte[]> tables = new LinkedHashMap<>();
+
+    Map<String, Fn> fns() { return fns; }
+    Map<String, Long> consts() { return consts; }
+    Map<String, Type> constTypes() { return constTypes; }
+    Map<String, Type> globals() { return globals; }
 
     /** Parses one source file into the program (several files make one program). */
     void add(String src, String file) {
@@ -255,10 +265,13 @@ final class NativeLang {
                     case "buffer" -> {
                         String name = ident();
                         expect("[");
-                        long size = parseInt(next().text());
+                        Tok sz = next();
+                        if (sz.kind().equals("id") && !consts.containsKey(sz.text())) throw err("unknown constant " + sz.text());
+                        long size = sz.kind().equals("id") ? consts.get(sz.text()) : parseInt(sz.text());
                         expect("]");
                         expect(";");
                         addresses.add(name);
+                        bufferSize.put(name, size);
                         asm.bss("g_" + name, size);
                     }
                     case "string" -> {
@@ -268,12 +281,27 @@ final class NativeLang {
                         if (!s.kind().equals("str")) throw err("expected a string");
                         expect(";");
                         addresses.add(name);
+                        stringText.put(name, s.text());
                         String l = stringData(s.text());
                         consts.put("@" + name, 0L);
                         strings.put("\u0000name:" + name, l);
                     }
+                    case "table" -> {
+                        String name = ident();
+                        expect("=");
+                        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+                        while (!is(";")) {
+                            bytes.write((int) parseInt(next().text()));
+                            if (is(",")) p++;
+                        }
+                        expect(";");
+                        addresses.add(name);
+                        tables.put(name, bytes.toByteArray());
+                        asm.dataLabel("g_" + name);
+                        asm.dataBytes(bytes.toByteArray());
+                    }
                     case "fn" -> function();
-                    default -> throw err("expected const, var, buffer, string or fn");
+                    default -> throw err("expected const, var, buffer, string, table or fn");
                 }
             }
         }

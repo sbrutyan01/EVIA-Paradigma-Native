@@ -262,6 +262,37 @@ final class Cli {
                     if (!lowered) out.println("wrote " + exe + " (" + r.executable().length + " bytes, Linux x86-64)");
                     return 0;
                 }
+                case "--avr" -> {
+                    // an AVR chip's program (Intel HEX) straight from the blocks: no avr-gcc
+                    need(args, 2);
+                    AvrChip chip = AvrChip.ATMEGA2560;
+                    long clock = 16000000;
+                    String output = null;
+                    boolean lowered = false;
+                    for (int i = 2; i < args.length; i++) {
+                        String opt = args[i];
+                        if (opt.equals("--lowered")) {
+                            lowered = true;
+                            continue;
+                        }
+                        if (i + 1 >= args.length) throw new IllegalArgumentException(opt + " needs a value (see --help)");
+                        String v = args[++i];
+                        switch (opt) {
+                            case "-o" -> output = v;
+                            case "--chip" -> chip = AvrChip.of(v);
+                            case "--clock" -> clock = Long.parseLong(v.replace("MHz", "000000").replace("mhz", "000000"));
+                            default -> throw new IllegalArgumentException("unknown option " + opt + " (see --help)");
+                        }
+                    }
+                    NativeCompiler.AvrResult r = NativeCompiler.compileAvr(load(args[1]), chip, clock);
+                    if (lowered) out.print(r.lowered());
+                    Path hex = Path.of(output != null ? output : Path.of(args[1]).getFileName().toString().replaceFirst("\\.evia$", "") + ".hex");
+                    Files.writeString(hex, r.hex(), StandardCharsets.US_ASCII);
+                    out.println(String.format("wrote %s: %,d bytes of flash (of %,d), %,d bytes of RAM (of %,d), %s at %.1f MHz",
+                            hex, r.flashBytes(), chip.flashBytes() - chip.bootloaderBytes(), r.ramBytes(),
+                            chip.ramEnd() + 1 - chip.ramStart(), chip.display(), clock / 1e6));
+                    return 0;
+                }
                 case "--export-app" -> {
                     // the program as an app for any x86-64 Linux: the executable, a portable .tar.gz and a .deb
                     need(args, 3);
@@ -382,6 +413,10 @@ final class Cli {
                               java -jar evia-paradigma.jar --native program.evia [-o FILE] [--values safe|fast]
                                                                                      a Linux x86-64 executable straight from
                                                                                      the blocks: no compiler or linker needed
+                              java -jar evia-paradigma.jar --avr program.evia --chip CHIP [-o FILE.hex] [--clock HZ]
+                                                                                     an AVR chip's program straight from the
+                                                                                     blocks (atmega8, atmega16, atmega32,
+                                                                                     atmega2560), no avr-gcc
                               java -jar evia-paradigma.jar --export-app program.evia DIR [--name N] [--command C]
                                   [--version V] [--description D] [--values safe|fast]
                                                                                      the program as an app for any x86-64

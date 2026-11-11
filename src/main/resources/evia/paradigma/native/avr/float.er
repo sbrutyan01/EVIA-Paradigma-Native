@@ -1,0 +1,56 @@
+// ===================== the remainder of 32-bit floats, for AVR chips (ints are 32 bits here) =====================
+// + - * /, comparisons and conversions are in AVR assembly (AvrFloat); Java's % (exact, the sign of the dividend) is here.
+
+const F_SIGN = 0x80000000;
+const F_QNAN = 0x7FC00000;
+const F_INF = 0x7F800000;
+
+fn f_nanb(x): int {
+    return (x & 0x7FFFFFFF) > F_INF;
+}
+
+/** m: 27 bits, the leading one at bit 26 and three bits below the last one kept (guard, round, sticky). */
+fn f_pack(sign, e, m): int {
+    var rest = m & 7;
+    m = m >>> 3;
+    if (rest > 4 || (rest == 4 && (m & 1) == 1)) {
+        m = m + 1;
+        if (m == 0x1000000) {
+            m = 0x800000;
+            e = e + 1;
+        }
+    }
+    if (e >= 255) { return sign | F_INF; }
+    if (e <= 0) { return sign; }
+    return sign | (e << 23) | (m & 0x7FFFFF);
+}
+
+/** Java's % on floats: the exact remainder, with the sign of the dividend. */
+fn f_modb(a, b): int {
+    var ea = (a >>> 23) & 255;
+    var eb = (b >>> 23) & 255;
+    if (f_nanb(a) || f_nanb(b) || ea == 255 || eb == 0) { return F_QNAN; }
+    if (eb == 255) { return a; }
+    if (ea == 0) { return a & F_SIGN; }
+    var sign = a & F_SIGN;
+    if ((a & 0x7FFFFFFF) < (b & 0x7FFFFFFF)) { return a; }
+    var mx = (a & 0x7FFFFF) | 0x800000;
+    var my = (b & 0x7FFFFF) | 0x800000;
+    var d = ea - eb;
+    while (d > 0) {
+        if (mx >= my) { mx = mx - my; }
+        mx = mx << 1;
+        d = d - 1;
+    }
+    if (mx >= my) { mx = mx - my; }
+    if (mx == 0) { return sign; }
+    var e = eb;
+    while (mx < 0x800000) {
+        mx = mx << 1;
+        e = e - 1;
+    }
+    if (e <= 0) { return sign; }
+    return sign | (e << 23) | (mx & 0x7FFFFF);
+}
+
+fn f_mod(a: float, b: float): float { return fbits(f_modb(bits(a), bits(b))); }

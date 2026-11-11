@@ -29,14 +29,42 @@ final class NativeCompiler {
     /** Child objects of a class (or of the main program, key null): member name -> class. */
     private final Map<BlockDef, LinkedHashMap<String, BlockDef>> children = new HashMap<>();
 
-    private NativeCompiler(Library lib, Target t) {
+    /** The AVR chip the program is for, or null for a Linux x86-64 executable. */
+    private final AvrChip chip;
+    /** Bytes per field and object slot: 8 on Linux, 4 on an AVR chip (whose values are 4 bytes and RAM is small). */
+    private final int SLOT;
+    /** The AVR chip's clock in Hz (for UART Open with a constant baud rate). */
+    private long fcpu = 16000000;
+
+    private NativeCompiler(Library lib, Target t, AvrChip chip) {
         this.lib = lib;
-        this.FAST = t.fast();
+        this.chip = chip;
+        this.FAST = t.fast() || chip != null;
+        this.SLOT = chip != null ? 4 : 8;
+    }
+
+    /** An AVR program: Intel HEX, its size in flash and RAM, and the lowered program. */
+    record AvrResult(String hex, int flashBytes, int ramBytes, String lowered) {}
+
+    /** The program for an AVR chip at a clock of fcpu Hz: fast values (32-bit floats), the board blocks on the chip. */
+    static AvrResult compileAvr(Library lib, AvrChip chip, long fcpu) {
+        Interpreter.prepare(lib);
+        NativeCompiler c = new NativeCompiler(lib, new Target(Target.Lang.CPP20, Target.Flow.STRUCTURED, Target.Values.FAST), chip);
+        c.fcpu = fcpu;
+        String program = c.lower();
+        NativeLang l = new NativeLang();
+        l.add(read("avr/float.er"), "avr/float.er");
+        l.add(chip.runtime(fcpu), chip.key + ".er");
+        l.add(read("avr/base.er"), "avr/base.er");
+        l.add(program, "program");
+        AvrGen g = new AvrGen(l, chip);
+        int[] words = g.compile();
+        return new AvrResult(AvrAsm.hex(words), words.length * 2, g.ramUsed(), program);
     }
 
     static Result compile(Library lib, Target t) {
         Interpreter.prepare(lib);
-        NativeCompiler c = new NativeCompiler(lib, t);
+        NativeCompiler c = new NativeCompiler(lib, t, null);
         String program = c.lower();
         NativeLang l = new NativeLang();
         l.add(read("common.er"), "common.er");
@@ -122,17 +150,17 @@ final class NativeCompiler {
     private int offset(BlockDef d, String field) {
         int i = fields.get(d).indexOf(field);
         if (i < 0) throw new IllegalStateException("no field " + field + " in " + d.name);
-        return 8 * i;
+        return SLOT * i;
     }
 
     private int childOffset(BlockDef d, String member) {
         int i = new ArrayList<>(children.get(d).keySet()).indexOf(member);
-        return 8 * (fields.get(d).size() + i);
+        return SLOT * (fields.get(d).size() + i);
     }
 
     private void classCode(BlockDef d) {
         String cn = className.get(d);
-        int size = 8 * (fields.get(d).size() + children.get(d).size());
+        int size = SLOT * (fields.get(d).size() + children.get(d).size());
         line("");
         line("// ---- class " + comment(d.name));
         line("fn " + cn + "_new(): int {");
@@ -260,7 +288,16 @@ final class NativeCompiler {
                     }
                 }
                 case FOR, WHILE, DO_WHILE -> loop(b, c);
+                case PIN_MODE, DIGITAL_WRITE, DIGITAL_READ, ANALOG_READ, ANALOG_WRITE, UART_OPEN, UART_WRITE, UART_READ -> {
+                    if (chip == null) throw boardOnly(b);
+                    boardBlock(b, c);
+                    go(b, 0);
+                }
                 default -> {
+                    if (chip != null && b.type.isBoard()) {
+                        throw new FlowException(b, "the " + b.type.title + " block is not in the native AVR compiler yet:"
+                                + " pins, PWM, Analog Read, Delay, Millis and the UART are");
+                    }
                     if (b.type == BlockType.SENSOR) {
                         throw new FlowException(b, "the Phone Sensor block reads a phone's sensors: choose Language Android"
                                 + " (Run simulates them on the computer)");
@@ -269,6 +306,40 @@ final class NativeCompiler {
                             + " Arduino or AVR C (Run simulates the board on the computer)");
                 }
             }
+        }
+
+        FlowException boardOnly(Block b) {
+            return new FlowException(b, "the " + b.type.title + " block runs on a microcontroller: choose an AVR chip"
+                    + " as what Build makes (Run simulates the board on the computer)");
+        }
+
+        /** Pins, PWM, the ADC and the UART of an AVR chip, through its runtime. */
+        void boardBlock(Block b, Interpreter.Compiled c) {
+            switch (b.type) {
+                case PIN_MODE -> stmt("pin_mode(" + pinOf(c.expr(), b) + ", "
+                        + (c.var().equals("OUTPUT") ? 1 : c.var().equals("INPUT_PULLUP") ? 2 : 0) + ");");
+                case DIGITAL_WRITE -> stmt((usesPwm() ? "digital_write_pwm(" : "digital_write(") + pinOf(c.expr(), b) + ", "
+                        + fastNum(c.args().get(0), b) + " != 0.0);");
+                case ANALOG_WRITE -> stmt("analog_write(" + pinOf(c.expr(), b) + ", f2i(" + fastNum(c.args().get(0), b) + "));");
+                case DIGITAL_READ -> assign(c.var(), "i2f(digital_read(" + pinOf(c.expr(), b) + "))", b);
+                case ANALOG_READ -> assign(c.var(), "i2f(analog_read(" + pinOf(c.expr(), b) + "))", b);
+                case UART_OPEN -> stmt(c.expr() instanceof Expr.Num n
+                        ? "uart_ubrr(" + AvrChip.ubrr(fcpu, (long) n.value()) + ");"
+                        : "uart_init(f2i(" + fastNum(c.expr(), b) + "));");
+                case UART_WRITE -> stmt("uart_put(f2i(" + fastNum(c.expr(), b) + ") & 255);");
+                case UART_READ -> assign(c.var(), "i2f(uart_read())", b);
+                default -> throw boardOnly(b);
+            }
+        }
+
+        /** Analog Write anywhere: Digital Write must then disconnect a pin's PWM first. */
+        boolean usesPwm() {
+            for (FlowCanvas cv : lib.canvases()) for (Block x : cv.getBlocks()) if (x.type == BlockType.ANALOG_WRITE) return true;
+            return false;
+        }
+
+        String pinOf(Expr e, Block b) {
+            return "f2i(" + fastNum(e, b) + ")";
         }
 
         /**
@@ -413,7 +484,7 @@ final class NativeCompiler {
                 if (cls == null) throw new FlowException(b, "'this' can only be used inside a class method");
                 return (FAST ? "loadf" : "load64") + "(self + " + offset(cls, name.substring(5)) + ")";
             }
-            Double board = BoardSim.constant(name);
+            Double board = chip != null ? chip.constant(name) : BoardSim.constant(name);
             if (board != null) return FAST ? floatLit(board) : hex(Double.doubleToRawLongBits(board));
             if (FAST) return "v_" + name;
             return "rd(v_" + name + ", " + string(name) + ")";
@@ -544,8 +615,12 @@ final class NativeCompiler {
         return "0x" + Long.toHexString(bits);
     }
 
-    /** A float in the low-level language: its exact bits (no decimal rounding on the way). */
-    private static String floatLit(double d) {
+    /**
+     * A float in the low-level language: its exact bits (no decimal rounding on the way). On an AVR chip floats are
+     * IEEE singles, so the literal is the double rounded to the nearest single, as avr-gcc rounds its constants.
+     */
+    private String floatLit(double d) {
+        if (chip != null) return "fbits(0x" + Integer.toHexString(Float.floatToRawIntBits((float) d)) + ")";
         return "fbits(" + hex(Double.doubleToRawLongBits(d)) + ")";
     }
 
