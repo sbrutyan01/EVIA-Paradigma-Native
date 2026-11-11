@@ -310,7 +310,7 @@ final class Cli {
                     return 0;
                 }
                 case "--version" -> {
-                    out.println("EVIA Paradigma " + App.VERSION + " (Java " + System.getProperty("java.version") + ")");
+                    out.println(App.name() + " " + App.VERSION + " (Java " + System.getProperty("java.version") + ")");
                     if (System.getProperty("evia.handedOver") != null) {
                         out.println("Updated:   started by the installed " + System.getProperty("evia.handedOver")
                                 + " from " + Packages.dir(Packages.APP));

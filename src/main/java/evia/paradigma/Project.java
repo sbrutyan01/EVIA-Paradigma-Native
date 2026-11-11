@@ -89,7 +89,7 @@ final class Project {
         p.props.setProperty("name", name);
         p.props.setProperty("main", "main.evia");
         p.props.setProperty("version", "0.1.0");
-        p.props.setProperty("created-with", "EVIA Paradigma " + App.VERSION);
+        p.props.setProperty("created-with", App.name() + " " + App.VERSION);
         p.save();
         Files.writeString(dir.resolve(".gitignore"), """
                 # EVIA Paradigma: generated code and compiled programs
