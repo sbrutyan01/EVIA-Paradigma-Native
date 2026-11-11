@@ -57,7 +57,7 @@ image_opts=(
   --add-modules java.base,java.desktop,java.prefs,java.logging
   --jlink-options "--strip-debug --no-man-pages --no-header-files --strip-native-commands"
   --dest "$WORK/image"
-  "${EXTRA[@]}"
+  ${EXTRA[@]+"${EXTRA[@]}"}
 )
 
 # ---- the toolchains that ride along (packaging/fetch-toolchains.sh puts them in build/toolchains):
@@ -96,7 +96,7 @@ case "$KIND" in
       --vendor "Sergey Brutyan (sbrutyan01)" \
       --description "$DESC" \
       --license-file LICENSE \
-      "${ASSOC[@]}" \
+      ${ASSOC[@]+"${ASSOC[@]}"} \
       --icon packaging/icons/evia.png \
       --linux-package-name "$DEB" \
       --linux-deb-maintainer sbrutyan01@gmail.com \
@@ -125,7 +125,7 @@ case "$KIND" in
       --vendor "Sergey Brutyan (sbrutyan01)" \
       --description "$DESC" \
       --license-file LICENSE \
-      "${ASSOC[@]}" \
+      ${ASSOC[@]+"${ASSOC[@]}"} \
       --icon packaging/icons/evia.ico \
       --win-menu --win-menu-group "EVIA" \
       --win-shortcut --win-shortcut-prompt \
@@ -143,7 +143,7 @@ case "$KIND" in
     jpackage --type app-image "${image_opts[@]}" --app-version "$MACVER" --icon packaging/icons/evia.icns \
       --mac-package-identifier "$MAC_ID" \
       --mac-package-name "$NAME" \
-      "${ASSOC[@]}"
+      ${ASSOC[@]+"${ASSOC[@]}"}
     APP="$WORK/image/$NAME.app"
     add_toolchains "$APP/Contents/Resources/toolchains"   # code signing allows extra files in Resources only
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
