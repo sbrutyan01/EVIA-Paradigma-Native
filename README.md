@@ -57,12 +57,27 @@ in WSL). Windows and ARM executables are the next steps.
 - **Run executable** (F6) builds and runs it; type Input into the field under the output.
 - **Values** in the toolbar: Safe or Fast.
 
+## Export App
+
+**Export app...** (Ctrl+Shift+E) turns the program into something to hand to other people, for any Linux on
+x86-64. Pick the app's name, command, version and description, and the forms:
+
+| Form | What it is | On the other computer |
+|---|---|---|
+| The executable | the program itself, static, nothing else needed | `./factorial-calculator` |
+| `.tar.gz` | the program, a menu entry, an icon, `install.sh` and `uninstall.sh` | `tar xzf ...` then `./install.sh` (for you, in `~/.local`, no root) or `sudo ./install.sh --system` |
+| `.deb` | `/usr/bin/COMMAND`, a menu entry and an icon | `sudo apt install ./factorial-calculator_1.0_amd64.deb` |
+
+The menu entry opens a terminal (Print and Input talk through one) and keeps it open when the program ends, until
+Enter is pressed. Everything is written by EVIA Paradigma Native itself, tar, gzip and the .deb included.
+
 The command line does the same:
 
 ```
 java -jar evia-paradigma-native-1.0.1.jar --native program.evia -o program [--values fast]
 ./program
 java -jar evia-paradigma-native-1.0.1.jar --run program.evia        # the interpreter
+java -jar evia-paradigma-native-1.0.1.jar --export-app program.evia ~/apps --name "My App" --version 1.0
 ```
 
 ## How it works

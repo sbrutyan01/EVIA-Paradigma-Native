@@ -54,5 +54,30 @@ else
   failed=$((failed + 1))
 fi
 
+# ---- Export App: the executable, the .tar.gz (installed for a throwaway user) and the .deb
+EXP="$OUT/export"
+if java -jar "$JAR" --export-app examples/factorial.evia "$EXP" --name "Factorial Check" --version 1.0 > /dev/null; then
+  got=$(echo 6 | "$EXP/factorial-check")
+  tar xzf "$EXP/factorial-check-1.0-linux-x86_64.tar.gz" -C "$EXP"
+  fake="$(pwd)/$EXP/home"
+  mkdir -p "$fake"
+  HOME="$fake" sh "$EXP/factorial-check-1.0-linux-x86_64/install.sh" > /dev/null
+  installed=$(echo 6 | "$fake/.local/bin/factorial-check")
+  HOME="$fake" sh "$EXP/factorial-check-1.0-linux-x86_64/uninstall.sh" > /dev/null
+  deb_ok=1
+  if command -v dpkg-deb > /dev/null; then
+    mkdir -p "$EXP/deb"
+    dpkg-deb -x "$EXP/factorial-check_1.0_amd64.deb" "$EXP/deb" && dpkg-deb -I "$EXP/factorial-check_1.0_amd64.deb" | grep -q "Package: factorial-check" \
+      && [ "$(echo 6 | "$EXP/deb/usr/bin/factorial-check")" = "Enter a value for n: 6! = 720" ] || deb_ok=0
+  fi
+  if [ "$got" = "Enter a value for n: 6! = 720" ] && [ "$installed" = "$got" ] && [ ! -e "$fake/.local/bin/factorial-check" ] && [ $deb_ok = 1 ]; then
+    echo "ok    Export App: the executable, the .tar.gz (install.sh, uninstall.sh) and the .deb"
+  else
+    echo "FAIL  Export App: '$got' '$installed' deb=$deb_ok"; failed=$((failed + 1))
+  fi
+else
+  echo "FAIL  Export App did not write the app"; failed=$((failed + 1))
+fi
+
 echo "$ok native executables identical to the interpreter, $refused refused by fast values (text in variables), $failed failed"
 [ "$failed" -eq 0 ]

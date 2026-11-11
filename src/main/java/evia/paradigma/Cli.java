@@ -262,6 +262,34 @@ final class Cli {
                     if (!lowered) out.println("wrote " + exe + " (" + r.executable().length + " bytes, Linux x86-64)");
                     return 0;
                 }
+                case "--export-app" -> {
+                    // the program as an app for any x86-64 Linux: the executable, a portable .tar.gz and a .deb
+                    need(args, 3);
+                    Library program = load(args[1]);
+                    Path dir = Path.of(args[2]).toAbsolutePath();
+                    String base = Path.of(args[1]).getFileName().toString().replaceFirst("\\.evia$", "");
+                    String name = base, command = null, version = "1.0", about = "A program made with EVIA Paradigma Native";
+                    Target t = Target.DEFAULT;
+                    for (int i = 3; i < args.length; i++) {
+                        String opt = args[i];
+                        if (i + 1 >= args.length) throw new IllegalArgumentException(opt + " needs a value (see --help)");
+                        String v = args[++i];
+                        switch (opt) {
+                            case "--name" -> name = v;
+                            case "--command" -> command = v;
+                            case "--version" -> version = v;
+                            case "--description" -> about = v;
+                            case "--values" -> t = t.withValues(v.equalsIgnoreCase("fast") ? Target.Values.FAST : Target.Values.SAFE);
+                            default -> throw new IllegalArgumentException("unknown option " + opt + " (see --help)");
+                        }
+                    }
+                    if (command == null) command = AppExport.commandFor(name);
+                    byte[] exe = NativeCompiler.compile(program, t).executable();
+                    for (Path p : AppExport.export(exe, new AppExport.Options(name, command, version, about, true, true, true), dir)) {
+                        out.println("wrote " + p);
+                    }
+                    return 0;
+                }
                 case "--android-sdk" -> {
                     // fetch the Android SDK from Google into DIR (default: Settings, or EVIA's own folder)
                     Path sdk = args.length > 1 && !args[1].startsWith("--") ? Path.of(args[1]).toAbsolutePath() : Settings.androidSdk();
@@ -354,6 +382,10 @@ final class Cli {
                               java -jar evia-paradigma.jar --native program.evia [-o FILE] [--values safe|fast]
                                                                                      a Linux x86-64 executable straight from
                                                                                      the blocks: no compiler or linker needed
+                              java -jar evia-paradigma.jar --export-app program.evia DIR [--name N] [--command C]
+                                  [--version V] [--description D] [--values safe|fast]
+                                                                                     the program as an app for any x86-64
+                                                                                     Linux: executable, .tar.gz and .deb
                               java -jar evia-paradigma.jar --android-sdk [DIR] [--accept-license]
                                                                                      download the Android SDK from Google
                                                                                      (shows Google's licence first)

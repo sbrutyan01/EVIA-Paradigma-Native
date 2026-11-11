@@ -465,3 +465,16 @@ Stop Executable	Կանգնեցնել ծրագիրը
 Time	Ժամանակ
   Executable: Linux x86-64	  Ծրագիր՝ Linux x86-64
 Build makes a program for Linux on 64-bit Intel and AMD processors, straight from the blocks	Կառուցումը բլոկներից ուղղակի ստեղծում է ծրագիր Linux-ի համար՝ 64-բիթանոց Intel և AMD պրոցեսորներով
+Export app...	Արտահանել հավելվածը...
+The program as an app for any Linux: the executable, a portable .tar.gz and a .deb	Ծրագիրը՝ որպես հավելված ցանկացած Linux-ի համար. կատարվող ֆայլ, շարժական .tar.gz և .deb
+Export App...	Արտահանել հավելվածը...
+A program made with EVIA Paradigma Native	EVIA Paradigma Native-ով ստեղծված ծրագիր
+The executable on its own (runs on any x86-64 Linux as it is)	Միայն կատարվող ֆայլը (աշխատում է ցանկացած x86-64 Linux-ում հենց այնպես)
+Portable .tar.gz with install.sh (any Linux, no root needed)	Շարժական .tar.gz՝ install.sh-ով (ցանկացած Linux, root պետք չէ)
+.deb package (Ubuntu, Debian, Linux Mint ...)	.deb փաթեթ (Ubuntu, Debian, Linux Mint ...)
+Choose	Ընտրել
+Command:	Հրաման՝
+Version:	Տարբերակ՝
+Description:	Նկարագրություն՝
+For Linux on 64-bit Intel and AMD processors. The program needs nothing else there: no libraries, no Java. Its menu entry opens a terminal, because Print and Input talk through one.	Linux-ի համար՝ 64-բիթանոց Intel և AMD պրոցեսորներով։ Ծրագրին այնտեղ ուրիշ ոչինչ պետք չէ՝ ոչ գրադարաններ, ոչ Java։ Նրա ընտրացանկի կետը բացում է տերմինալ, քանի որ Print-ը և Input-ը աշխատում են դրա միջոցով։
+Export App	Արտահանել հավելվածը

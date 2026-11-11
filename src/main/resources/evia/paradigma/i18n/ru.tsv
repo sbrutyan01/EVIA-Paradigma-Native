@@ -465,3 +465,16 @@ Stop Executable	Остановить программу
 Time	Время
   Executable: Linux x86-64	  Программа: Linux x86-64
 Build makes a program for Linux on 64-bit Intel and AMD processors, straight from the blocks	Сборка делает программу для Linux на 64-битных процессорах Intel и AMD прямо из блоков
+Export app...	Экспорт приложения...
+The program as an app for any Linux: the executable, a portable .tar.gz and a .deb	Программа как приложение для любого Linux: исполняемый файл, переносимый .tar.gz и .deb
+Export App...	Экспорт приложения...
+A program made with EVIA Paradigma Native	Программа, сделанная в EVIA Paradigma Native
+The executable on its own (runs on any x86-64 Linux as it is)	Только исполняемый файл (работает на любом Linux x86-64 как есть)
+Portable .tar.gz with install.sh (any Linux, no root needed)	Переносимый .tar.gz с install.sh (любой Linux, права root не нужны)
+.deb package (Ubuntu, Debian, Linux Mint ...)	Пакет .deb (Ubuntu, Debian, Linux Mint ...)
+Choose	Выбрать
+Command:	Команда:
+Version:	Версия:
+Description:	Описание:
+For Linux on 64-bit Intel and AMD processors. The program needs nothing else there: no libraries, no Java. Its menu entry opens a terminal, because Print and Input talk through one.	Для Linux на 64-битных процессорах Intel и AMD. Программе там больше ничего не нужно: ни библиотек, ни Java. Её пункт меню открывает терминал, потому что Print и Input работают через него.
+Export App	Экспорт приложения

@@ -136,6 +136,9 @@ final class MainFrame extends JFrame {
             JButton runExe = button("Run executable", e -> buildExecutable(true));
             runExe.setToolTipText(Text.t("Build, then run the program; Input goes to it from the field under the output (F6)"));
             tb.add(runExe);
+            JButton export = button("Export app...", e -> exportApp());
+            export.setToolTipText(Text.t("The program as an app for any Linux: the executable, a portable .tar.gz and a .deb"));
+            tb.add(export);
         } else {
             tb.add(button("Generate code", e -> generateCode()));
             tb.add(new TargetBar());
@@ -305,6 +308,8 @@ final class MainFrame extends JFrame {
             run.add(item("Build Executable", KeyStroke.getKeyStroke(KeyEvent.VK_F7, 0), e -> buildExecutable(false)));
             run.add(item("Run Executable", KeyStroke.getKeyStroke(KeyEvent.VK_F6, 0), e -> buildExecutable(true)));
             run.add(item("Stop Executable", null, e -> stopExecutable()));
+            run.addSeparator();
+            run.add(item("Export App...", KeyStroke.getKeyStroke(KeyEvent.VK_E, MENU | InputEvent.SHIFT_DOWN_MASK), e -> exportApp()));
         } else {
             run.add(item("Generate Code", KeyStroke.getKeyStroke(KeyEvent.VK_F7, 0), e -> generateCode()));
             run.add(targetMenu());
@@ -908,6 +913,81 @@ final class MainFrame extends JFrame {
         }, "evia-executable");
         th.setDaemon(true);
         th.start();
+    }
+
+    /** Export App: the program as an app for any x86-64 Linux, in the forms chosen (see AppExport). */
+    private void exportApp() {
+        if (worker != null) return;
+        for (FlowCanvas c : lib.canvases()) c.clearMarks();
+        NativeCompiler.Result r;
+        try {
+            r = NativeCompiler.compile(lib, Settings.target());
+        } catch (FlowException e) {
+            console.setText("");
+            reportError(e);
+            return;
+        }
+        String base = programName();
+        String pretty = base.isEmpty() ? "EVIA App" : Character.toUpperCase(base.charAt(0)) + base.substring(1).replace('_', ' ');
+        JTextField name = new JTextField(pretty, 28);
+        JTextField command = new JTextField(AppExport.commandFor(pretty), 28);
+        JTextField version = new JTextField("1.0", 10);
+        JTextField about = new JTextField(Text.t("A program made with EVIA Paradigma Native"), 28);
+        JCheckBox exe = new JCheckBox(Text.t("The executable on its own (runs on any x86-64 Linux as it is)"), true);
+        JCheckBox tgz = new JCheckBox(Text.t("Portable .tar.gz with install.sh (any Linux, no root needed)"), true);
+        JCheckBox deb = new JCheckBox(Text.t(".deb package (Ubuntu, Debian, Linux Mint ...)"), true);
+        Path start = project != null ? project.buildDir().resolve("app")
+                : currentFile != null ? currentFile.toPath().toAbsolutePath().resolveSibling(command.getText() + "-app")
+                : Path.of(System.getProperty("user.home"), command.getText() + "-app");
+        JTextField folder = new JTextField(start.toString(), 28);
+        JButton browse = new JButton(Text.t("Browse..."));
+        browse.addActionListener(e -> {
+            JFileChooser fc = new JFileChooser(folder.getText());
+            fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            if (fc.showDialog(this, Text.t("Choose")) == JFileChooser.APPROVE_OPTION) folder.setText(fc.getSelectedFile().getPath());
+        });
+        JPanel p = new JPanel(new GridBagLayout());
+        GridBagConstraints g = new GridBagConstraints();
+        g.anchor = GridBagConstraints.WEST;
+        g.insets = new Insets(3, 4, 3, 4);
+        Object[][] rows = {{Text.t("App name:"), name}, {Text.t("Command:"), command}, {Text.t("Version:"), version},
+                {Text.t("Description:"), about}};
+        for (Object[] row : rows) {
+            g.gridx = 0; g.gridy++; g.gridwidth = 1;
+            p.add(new JLabel((String) row[0]), g);
+            g.gridx = 1;
+            p.add((Component) row[1], g);
+        }
+        for (JCheckBox b : new JCheckBox[]{exe, tgz, deb}) {
+            g.gridx = 0; g.gridy++; g.gridwidth = 2;
+            p.add(b, g);
+        }
+        g.gridx = 0; g.gridy++; g.gridwidth = 1;
+        p.add(new JLabel(Text.t("Folder:")), g);
+        JPanel f = new JPanel(new BorderLayout(4, 0));
+        f.add(folder, BorderLayout.CENTER);
+        f.add(browse, BorderLayout.EAST);
+        g.gridx = 1;
+        p.add(f, g);
+        g.gridx = 0; g.gridy++; g.gridwidth = 2;
+        JLabel note = new JLabel("<html><div style='width:430px;color:#777777'>" + Text.t("For Linux on 64-bit Intel and AMD processors. The program needs nothing else there: no libraries, no Java. Its menu entry opens a terminal, because Print and Input talk through one.") + "</div></html>");
+        p.add(note, g);
+        int a = JOptionPane.showConfirmDialog(this, p, Text.t("Export App"), JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (a != JOptionPane.OK_OPTION) return;
+        try {
+            List<Path> files = AppExport.export(r.executable(), new AppExport.Options(name.getText().strip(),
+                    command.getText().strip(), version.getText().strip(), about.getText().strip(),
+                    exe.isSelected(), tgz.isSelected(), deb.isSelected()), Path.of(folder.getText().strip()));
+            console.setText("");
+            console.append(">> exported " + name.getText().strip() + " to " + folder.getText().strip() + ":\n");
+            for (Path x : files) console.append("   " + x.getFileName() + "   (" + String.format("%,d", Files.size(x)) + " bytes)\n");
+            console.append("\n   Executable:  copy it to any x86-64 Linux and run ./" + command.getText().strip() + "\n"
+                    + "   .tar.gz:     tar xzf the file, then ./install.sh (or sudo ./install.sh --system)\n"
+                    + "   .deb:        sudo apt install ./" + command.getText().strip() + "_" + version.getText().strip() + "_amd64.deb\n");
+            status.setText("Exported " + files.size() + " file(s) to " + folder.getText().strip());
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, e.getMessage(), Text.t("Export App"), JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private void sendToExecutable() {
