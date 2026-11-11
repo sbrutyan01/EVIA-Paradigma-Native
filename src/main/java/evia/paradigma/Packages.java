@@ -42,8 +42,11 @@ import java.util.stream.Stream;
 final class Packages {
     private Packages() {}
 
-    /** Where the packages come from: the EVIA server. */
-    static final String DEFAULT_REPO = "https://evia.am/packages/";
+    /** Where the updates come from: EVIA Paradigma Native's own index on the EVIA server (dell). */
+    static final String DEFAULT_REPO = "https://evia.am/native/";
+
+    /** The application's jars: evia-paradigma-native-1.2.0.jar. */
+    static final String JAR_PREFIX = "evia-paradigma-native-";
 
     /** The id of the application package. */
     static final String APP = "app";
@@ -51,13 +54,13 @@ final class Packages {
     /** The repository: the system property evia.packages (for checks and mirrors), else Settings, else the default. */
     static String repo() {
         String r = System.getProperty("evia.packages");
-        if (r == null || r.isBlank()) r = java.util.prefs.Preferences.userNodeForPackage(Packages.class).get("packagesRepo", DEFAULT_REPO);
+        if (r == null || r.isBlank()) r = java.util.prefs.Preferences.userNodeForPackage(Packages.class).get("nativePackagesRepo", DEFAULT_REPO);
         return r.endsWith("/") ? r : r + "/";
     }
 
     static void setRepo(String url) {
         String u = url == null || url.isBlank() ? DEFAULT_REPO : url.trim();
-        java.util.prefs.Preferences.userNodeForPackage(Packages.class).put("packagesRepo", u);
+        java.util.prefs.Preferences.userNodeForPackage(Packages.class).put("nativePackagesRepo", u);
     }
 
     /** This computer, as the index names it: linux-x64, linux-arm64, windows-x64, macos-arm64 or macos-x64. */
@@ -76,7 +79,7 @@ final class Packages {
         if (override != null && !override.isBlank()) return Path.of(override);
         String base = ExternalEditor.WINDOWS ? System.getenv("LOCALAPPDATA") : null;
         if (base == null) base = System.getProperty("user.home");
-        return Path.of(base, ExternalEditor.WINDOWS ? "EVIA Paradigma" : ".evia-paradigma", "packages");
+        return Path.of(base, ExternalEditor.WINDOWS ? "EVIA Paradigma Native" : ".evia-paradigma-native", "packages");
     }
 
     /** The folder of an installed package. */
@@ -202,7 +205,7 @@ final class Packages {
         Path dir = dir(APP);
         if (!Files.isDirectory(dir)) return null;
         try (Stream<Path> s = Files.list(dir)) {
-            return s.filter(p -> p.getFileName().toString().matches("evia-paradigma-[0-9][0-9.]*\\.jar"))
+            return s.filter(p -> p.getFileName().toString().matches(java.util.regex.Pattern.quote(JAR_PREFIX) + "[0-9][0-9.]*\\.jar"))
                     .filter(p -> !Files.exists(p.resolveSibling(p.getFileName() + ".broken")))
                     .filter(p -> compare(appVersion(p), than) > 0)
                     .max(Comparator.comparing(Packages::appVersion, Packages::compare))
@@ -214,7 +217,7 @@ final class Packages {
 
     static String appVersion(Path jar) {
         String n = jar.getFileName().toString();
-        return n.substring("evia-paradigma-".length(), n.length() - ".jar".length());
+        return n.substring(JAR_PREFIX.length(), n.length() - ".jar".length());
     }
 
     /** Marks a newer application jar that would not start, so the next start does not try it again. */
@@ -252,7 +255,7 @@ final class Packages {
             Files.createDirectories(home());
             if (p.app()) {
                 Path dir = Files.createDirectories(dir(APP));
-                Path jar = dir.resolve("evia-paradigma-" + p.version() + ".jar");
+                Path jar = dir.resolve(JAR_PREFIX + p.version() + ".jar");
                 Files.move(file, jar, StandardCopyOption.REPLACE_EXISTING);
                 Files.deleteIfExists(jar.resolveSibling(jar.getFileName() + ".broken"));
                 pruneApps(dir, p.version());
@@ -288,7 +291,7 @@ final class Packages {
     private static void pruneApps(Path dir, String keep) throws IOException {
         List<Path> jars;
         try (Stream<Path> s = Files.list(dir)) {
-            jars = s.filter(p -> p.getFileName().toString().matches("evia-paradigma-[0-9][0-9.]*\\.jar"))
+            jars = s.filter(p -> p.getFileName().toString().matches(java.util.regex.Pattern.quote(JAR_PREFIX) + "[0-9][0-9.]*\\.jar"))
                     .sorted(Comparator.comparing(Packages::appVersion, Packages::compare).reversed()).toList();
         }
         for (int i = 2; i < jars.size(); i++) {

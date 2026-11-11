@@ -34,7 +34,7 @@ public final class App {
             System.setProperty("evia.edition", args[1]);
             args = java.util.Arrays.copyOfRange(args, 2, args.length);
         }
-        // updates come as new installers from this project's releases (Help, Check for Updates), not as packages
+        if (handOver(args)) return;   // a newer version installed from evia.am/native starts instead
         if (args.length > 0 && args[0].startsWith("-")) {
             System.setProperty("java.awt.headless", "true");
             System.exit(Cli.run(args));
@@ -46,7 +46,8 @@ public final class App {
             f.setVisible(true);
             if (toOpen != null) f.openFile(toOpen);
             // the first start of an installed copy: pick the toolchains; later starts: a quiet check for updates
-            // no toolchains to fetch: the compiler is built in
+            // no toolchains to fetch (the compiler is built in): a quiet check for a newer version on evia.am
+            PackagesDialog.checkInBackground(f::notice);
             // macOS delivers double-clicked documents through an event instead of arguments
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.APP_OPEN_FILE)) {
                 Desktop.getDesktop().setOpenFileHandler(e -> {

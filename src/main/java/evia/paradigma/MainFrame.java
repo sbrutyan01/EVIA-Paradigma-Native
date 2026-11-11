@@ -355,7 +355,7 @@ final class MainFrame extends JFrame {
         help.addSeparator();
         help.add(item("Online Documentation", null, e -> HelpWindow.browse(this, HelpWindow.REPO + "#readme")));
         help.add(item("Report an Issue...", null, e -> HelpWindow.browse(this, HelpWindow.REPO + "/issues/new")));
-        help.add(item("Check for Updates...", null, e -> HelpWindow.checkForUpdates(this)));
+        help.add(item("Check for Updates...", null, e -> PackagesDialog.show(this, false)));
         if (!ExternalEditor.MAC) {
             help.addSeparator();
             help.add(item(App.nativeEdition() ? "About EVIA Paradigma Native" : "About EVIA Paradigma", null, e -> AppIcon.showAbout(this)));
@@ -453,8 +453,8 @@ final class MainFrame extends JFrame {
     private JMenu settingsMenu() {
         JMenu m = menu("Settings", KeyEvent.VK_S);
         m.add(item("General...", ExternalEditor.MAC ? null : KeyStroke.getKeyStroke(KeyEvent.VK_COMMA, MENU), e -> Settings.showDialog(this, Settings.Page.GENERAL)));
-        if (App.nativeEdition()) return m;   // no languages, no boards, no packages
-        m.add(item("Packages and Updates...", null, e -> PackagesDialog.show(this, false)));
+        m.add(item(App.nativeEdition() ? "Updates..." : "Packages and Updates...", null, e -> PackagesDialog.show(this, false)));
+        if (App.nativeEdition()) return m;   // no languages, no boards
         m.addSeparator();
         m.add(item("C, C++ and Python...", null, e -> Settings.showDialog(this, Settings.Page.DESKTOP)));
         m.add(item("Java and Kotlin...", null, e -> Settings.showDialog(this, Settings.Page.JVM)));
