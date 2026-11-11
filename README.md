@@ -11,7 +11,7 @@
   Visual block programming compiled straight to executables: no compiler, no assembler, no linker.
   <br><br>
   <a href="https://github.com/sbrutyan01/EVIA-Paradigma-Native/actions/workflows/build.yml"><img src="https://github.com/sbrutyan01/EVIA-Paradigma-Native/actions/workflows/build.yml/badge.svg" alt="build"></a>
-  <a href="https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/latest"><img src="https://img.shields.io/badge/version-1.3.0-blue" alt="version 1.3.0"></a>
+  <a href="https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/latest"><img src="https://img.shields.io/badge/version-1.4.0-blue" alt="version 1.4.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
 </p>
 
@@ -30,11 +30,11 @@ way: no languages, the program itself.
 
 | System | File |
 |---|---|
-| Windows 10 / 11 (x64) | `EVIA-Paradigma-Native-1.3.0-windows-x64.exe` |
-| macOS, Apple Silicon / Intel | `EVIA-Paradigma-Native-1.3.0-macos-arm64.dmg` / `-macos-x64.dmg` |
-| Ubuntu 22.04+ / Debian 12+ | `evia-paradigma-native_1.3.0_amd64.deb` (`/opt/evia-paradigma-native`, command `evia-paradigma-native`) |
-| Any Linux (x86-64) | `EVIA-Paradigma-Native-1.3.0-x86_64.AppImage` |
-| Any OS with Java 25 | `evia-paradigma-native-1.3.0.jar` |
+| Windows 10 / 11 (x64) | `EVIA-Paradigma-Native-1.4.0-windows-x64.exe` |
+| macOS, Apple Silicon / Intel | `EVIA-Paradigma-Native-1.4.0-macos-arm64.dmg` / `-macos-x64.dmg` |
+| Ubuntu 22.04+ / Debian 12+ | `evia-paradigma-native_1.4.0_amd64.deb` (`/opt/evia-paradigma-native`, command `evia-paradigma-native`) |
+| Any Linux (x86-64) | `EVIA-Paradigma-Native-1.4.0-x86_64.AppImage` |
+| Any OS with Java 25 | `evia-paradigma-native-1.4.0.jar` |
 
 From the [latest release](https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/latest). Each installer
 carries its own Java runtime. It installs next to EVIA Paradigma if you have both.
@@ -81,10 +81,10 @@ Enter is pressed. Everything is written by EVIA Paradigma Native itself, tar, gz
 The command line does the same:
 
 ```
-java -jar evia-paradigma-native-1.3.0.jar --native program.evia -o program [--values fast]
+java -jar evia-paradigma-native-1.4.0.jar --native program.evia -o program [--values fast]
 ./program
-java -jar evia-paradigma-native-1.3.0.jar --run program.evia        # the interpreter
-java -jar evia-paradigma-native-1.3.0.jar --export-app program.evia ~/apps --name "My App" --version 1.0
+java -jar evia-paradigma-native-1.4.0.jar --run program.evia        # the interpreter
+java -jar evia-paradigma-native-1.4.0.jar --export-app program.evia ~/apps --name "My App" --version 1.0
 ```
 
 ## AVR chips
@@ -109,7 +109,7 @@ chip's **Clock**. With a chip, the palette has the board blocks it runs.
 - **File → Open Example → AVR Chips**: blink, button, fade, analog meter, a class with a pin, UART echo.
 
 ```
-java -jar evia-paradigma-native-1.3.0.jar --avr blink.evia --chip atmega8 -o blink.hex --upload /dev/ttyUSB0
+java -jar evia-paradigma-native-1.4.0.jar --avr blink.evia --chip atmega8 -o blink.hex --upload /dev/ttyUSB0
 ```
 
 ## RTOS: tasks on AVR chips
@@ -143,7 +143,7 @@ main program only (the `Rtos` methods do what their flowcharts do there); the ta
 `examples/rtos/rtos_demo.evia` has a blinking LED, a producer and a consumer on a semaphore, a busy task and a mutex.
 
 ```
-java -jar evia-paradigma-native-1.3.0.jar --avr examples/rtos/rtos_demo.evia --chip atmega32 -o rtos.hex
+java -jar evia-paradigma-native-1.4.0.jar --avr examples/rtos/rtos_demo.evia --chip atmega32 -o rtos.hex
 ```
 
 ## How it works
@@ -159,7 +159,7 @@ protocols over the serial port.
 ## Building from source
 
 ```
-mvn package                     # target/evia-paradigma-native-1.3.0.jar
+mvn package                     # target/evia-paradigma-native-1.4.0.jar
 scripts/check-native.sh         # every example and test against the interpreter, 100,000 numbers against Java
 scripts/check-avr.sh            # AVR programs in simavr against the interpreter, random tests, uploads (needs simavr:
                                 #   scripts/simavr/build.sh, as in .github/workflows/build.yml)
