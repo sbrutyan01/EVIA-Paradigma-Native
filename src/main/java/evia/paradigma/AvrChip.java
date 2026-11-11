@@ -161,10 +161,15 @@ enum AvrChip {
 
     /** The chip's part of the runtime, for a clock of fcpu Hz. */
     String runtime(long fcpu) {
+        return runtime(fcpu, -1);
+    }
+
+    /** The runtime constants, with a heap of heap bytes (below 0: the chip's usual heap). */
+    String runtime(long fcpu, int heap) {
         StringBuilder s = new StringBuilder("// ---- the " + display + " at " + fcpu / 1000000.0 + " MHz\n");
         s.append("const F_CPU = ").append(fcpu).append(";\n");
         s.append("const MAX_DEPTH = ").append(switch (this) { case ATMEGA8, ATMEGA16 -> 24; case ATMEGA32 -> 64; default -> 400; }).append(";\n");
-        s.append("const HEAP = ").append(switch (this) { case ATMEGA8, ATMEGA16 -> 256; case ATMEGA32 -> 768; default -> 3072; }).append(";\n");
+        s.append("const HEAP = ").append(heap >= 0 ? heap : switch (this) { case ATMEGA8, ATMEGA16 -> 256; case ATMEGA32 -> 768; default -> 3072; }).append(";\n");
         s.append("const A0_PIN = ").append(a0).append(";\n");
         s.append("const UBRR_115200 = ").append(ubrr(fcpu, 115200)).append(";\n");
         if (mega2560()) {

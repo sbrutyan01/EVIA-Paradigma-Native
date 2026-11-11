@@ -11,7 +11,7 @@
   Visual block programming compiled straight to executables: no compiler, no assembler, no linker.
   <br><br>
   <a href="https://github.com/sbrutyan01/EVIA-Paradigma-Native/actions/workflows/build.yml"><img src="https://github.com/sbrutyan01/EVIA-Paradigma-Native/actions/workflows/build.yml/badge.svg" alt="build"></a>
-  <a href="https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/latest"><img src="https://img.shields.io/badge/version-1.2.0-blue" alt="version 1.2.0"></a>
+  <a href="https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/latest"><img src="https://img.shields.io/badge/version-1.3.0-blue" alt="version 1.3.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
 </p>
 
@@ -30,11 +30,11 @@ way: no languages, the program itself.
 
 | System | File |
 |---|---|
-| Windows 10 / 11 (x64) | `EVIA-Paradigma-Native-1.2.0-windows-x64.exe` |
-| macOS, Apple Silicon / Intel | `EVIA-Paradigma-Native-1.2.0-macos-arm64.dmg` / `-macos-x64.dmg` |
-| Ubuntu 22.04+ / Debian 12+ | `evia-paradigma-native_1.2.0_amd64.deb` (`/opt/evia-paradigma-native`, command `evia-paradigma-native`) |
-| Any Linux (x86-64) | `EVIA-Paradigma-Native-1.2.0-x86_64.AppImage` |
-| Any OS with Java 25 | `evia-paradigma-native-1.2.0.jar` |
+| Windows 10 / 11 (x64) | `EVIA-Paradigma-Native-1.3.0-windows-x64.exe` |
+| macOS, Apple Silicon / Intel | `EVIA-Paradigma-Native-1.3.0-macos-arm64.dmg` / `-macos-x64.dmg` |
+| Ubuntu 22.04+ / Debian 12+ | `evia-paradigma-native_1.3.0_amd64.deb` (`/opt/evia-paradigma-native`, command `evia-paradigma-native`) |
+| Any Linux (x86-64) | `EVIA-Paradigma-Native-1.3.0-x86_64.AppImage` |
+| Any OS with Java 25 | `evia-paradigma-native-1.3.0.jar` |
 
 From the [latest release](https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/latest). Each installer
 carries its own Java runtime. It installs next to EVIA Paradigma if you have both.
@@ -76,10 +76,10 @@ Enter is pressed. Everything is written by EVIA Paradigma Native itself, tar, gz
 The command line does the same:
 
 ```
-java -jar evia-paradigma-native-1.2.0.jar --native program.evia -o program [--values fast]
+java -jar evia-paradigma-native-1.3.0.jar --native program.evia -o program [--values fast]
 ./program
-java -jar evia-paradigma-native-1.2.0.jar --run program.evia        # the interpreter
-java -jar evia-paradigma-native-1.2.0.jar --export-app program.evia ~/apps --name "My App" --version 1.0
+java -jar evia-paradigma-native-1.3.0.jar --run program.evia        # the interpreter
+java -jar evia-paradigma-native-1.3.0.jar --export-app program.evia ~/apps --name "My App" --version 1.0
 ```
 
 ## AVR chips
@@ -104,7 +104,41 @@ chip's **Clock**. With a chip, the palette has the board blocks it runs.
 - **File → Open Example → AVR Chips**: blink, button, fade, analog meter, a class with a pin, UART echo.
 
 ```
-java -jar evia-paradigma-native-1.2.0.jar --avr blink.evia --chip atmega8 -o blink.hex --upload /dev/ttyUSB0
+java -jar evia-paradigma-native-1.3.0.jar --avr blink.evia --chip atmega8 -o blink.hex --upload /dev/ttyUSB0
+```
+
+## RTOS: tasks on AVR chips
+
+The AVR compiler has a small preemptive real-time kernel (`native/avr/rtos.er`). A program uses it with ordinary
+blocks; there are no new ones:
+
+- **A task is a class with a method named `task`** (no parameters). Each such class gets one object, and its task
+  starts before the main program, which is task 0. When the task's flowchart reaches an Exit, the task ends; when the
+  main program reaches End, only the main program ends.
+- **Fields the kernel reads** (plain numbers): `priority` (1-250, default 1, the main program has 1) and `stack`
+  (bytes, default 256, at least 128). A task that prints needs about 180 bytes.
+- **Scheduling**: the highest-priority ready task runs; tasks of the same priority take turns every tick (timer 0,
+  1.024 ms at 16 MHz). A task that never waits still lets the others run.
+- **Delay** in any task sleeps only that task. **Print** and **Input** hold the serial port for a whole line, so
+  lines from different tasks never mix.
+- **The `Rtos` class** (File → Import Module...: `examples/modules/rtos.eviam`) calls the kernel through Call blocks:
+
+| Method | What it does |
+|---|---|
+| `sleep(ms)` | sleeps this task, as Delay does |
+| `yield()` | lets the other ready tasks of the same priority run |
+| `lock(m)`, `unlock(m)` | mutexes 0-7: one task at a time between lock and unlock |
+| `signal(s)` | semaphores 0-7: wakes the highest-priority task waiting, or counts up |
+| `wait(s, ms)` | waits for semaphore s: exit `got`, or exit `timeout` after ms (0: no time limit) |
+
+The kernel checks every task's stack at each switch and stops with *a task ran out of stack* when one overflowed. On the
+ATmega32 (2 KB of RAM) a program has room for about 5 tasks of 256 bytes. Variables without `this.` are shared by all
+tasks: give each task its own names (or use fields) and guard shared ones with a mutex. Run in the editor runs the
+main program only (the `Rtos` methods do what their flowcharts do there); the tasks run on the chip.
+`examples/rtos/rtos_demo.evia` has a blinking LED, a producer and a consumer on a semaphore, a busy task and a mutex.
+
+```
+java -jar evia-paradigma-native-1.3.0.jar --avr examples/rtos/rtos_demo.evia --chip atmega32 -o rtos.hex
 ```
 
 ## How it works
@@ -120,10 +154,11 @@ protocols over the serial port.
 ## Building from source
 
 ```
-mvn package                     # target/evia-paradigma-native-1.2.0.jar
+mvn package                     # target/evia-paradigma-native-1.3.0.jar
 scripts/check-native.sh         # every example and test against the interpreter, 100,000 numbers against Java
 scripts/check-avr.sh            # AVR programs in simavr against the interpreter, random tests, uploads (needs simavr:
                                 #   scripts/simavr/build.sh, as in .github/workflows/build.yml)
+scripts/check-rtos.sh           # the RTOS: tasks, priorities, semaphores and mutexes in simavr
 scripts/check-app.sh            # the editor, classes, modules, projects and Git
 packaging/package.sh linux      # the .deb and the AppImage (windows, macos-arm64, macos-x64 on those systems)
 ```

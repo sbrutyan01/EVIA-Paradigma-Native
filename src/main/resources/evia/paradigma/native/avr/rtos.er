@@ -1,0 +1,226 @@
+// ===================== EVIA RTOS: a small preemptive kernel for AVR chips =====================
+// Added to a program that has tasks (class methods named task) or calls the Rtos class. Task 0 is the main
+// program (on the chip's own stack), the last task is the idle task. The timer-0 interrupt (every 1.024 ms at
+// 16 MHz) wakes sleeping tasks and runs the highest-priority ready task; tasks of the same priority take turns
+// every tick. The context switch itself (os_switch, os_frame and the interrupt) is assembly in AvrGen.
+//
+// Task states: 0 ended, 1 ready, 2 sleeping, 3 waiting for a semaphore or mutex.
+// Objects to wait on: semaphores 0-7 (slots 0-7, start at 0), mutexes 0-7 (slots 8-15, start free),
+// slot 16 is the console (Print and Input hold it, so lines from different tasks never mix).
+
+const OS_TASKS = 16;
+const OS_SLOTS = 17;
+const OS_CONSOLE = 16;
+const OS_CANARY = 0xA5;
+
+buffer os_sp[64];        // per task: its saved stack pointer (4 bytes each)
+buffer os_wake[64];      // per task: when a sleep or a wait with a time limit ends (ms_count)
+buffer os_depth[64];     // per task: its method-call depth (the runtime's depth)
+buffer os_guard[64];     // per task: the lowest byte of its stack (holds OS_CANARY), 0 for the main program
+buffer os_state[16];
+buffer os_prio[16];
+buffer os_obj[16];       // the slot a waiting task waits for
+buffer os_timed[16];     // 1: the wait has a time limit
+buffer os_got[16];       // 1: the wait ended with the semaphore or mutex, 0: it timed out
+buffer os_count[17];     // per slot: a semaphore's count, 1 for a free mutex
+var os_cur: int;
+var os_n: int;
+var os_on: int;
+
+/** Switches to the task os_schedule picks. Called with interrupts off; returns with them on. Assembly (AvrGen). */
+fn os_switch() { }
+
+/** A new task's first stack frame below top (it starts at os_run_task); the stack pointer it starts with. Assembly. */
+fn os_frame(top): int {
+    return top;
+}
+
+/** The main program becomes task 0. */
+fn os_init() {
+    os_n = 1;
+    store8(os_state, 1);
+    store8(os_prio, 1);
+    var i = 8;
+    while (i < OS_SLOTS) {
+        store8(os_count + i, 1);
+        i = i + 1;
+    }
+    os_on = 1;
+}
+
+/** A task with this priority and stack (bottom .. top, both inside the stack); it is ready at once. */
+fn os_add(prio, bottom, top) {
+    if (os_n >= OS_TASKS) { fail("Rtos: at most 14 tasks"); }
+    store8(bottom, OS_CANARY);
+    var sp = os_frame(top);
+    cli();
+    var id = os_n;
+    store64(os_sp + 4 * id, sp);
+    store64(os_guard + 4 * id, bottom);
+    store64(os_depth + 4 * id, 0);
+    store8(os_prio + id, prio);
+    store8(os_state + id, 1);
+    os_n = id + 1;
+    sei();
+}
+
+/** The ready task to run: the highest priority, and of those the next one after the current task. */
+fn os_pick(): int {
+    var best = os_cur;
+    var bp = -1;
+    var i = os_cur;
+    var k = 0;
+    while (k < os_n) {
+        i = i + 1;
+        if (i >= os_n) { i = 0; }
+        if (load8(os_state + i) == 1) {
+            var p = load8(os_prio + i);
+            if (p > bp) {
+                best = i;
+                bp = p;
+            }
+        }
+        k = k + 1;
+    }
+    return best;
+}
+
+/** Interrupts off, on the stack of the task that stops: checks its stack, picks the next task. */
+fn os_schedule() {
+    var g = load64(os_guard + 4 * os_cur);
+    if (g != 0) {
+        var sp = load64(os_sp + 4 * os_cur) & 0xFFFF;
+        if (load8(g) != OS_CANARY || sp < g + 8) {
+            store8(g, OS_CANARY);
+            fail("Rtos: a task ran out of stack (give its class a bigger stack field)");
+        }
+    }
+    store64(os_depth + 4 * os_cur, depth);
+    os_cur = os_pick();
+    depth = load64(os_depth + 4 * os_cur);
+}
+
+/** From the timer interrupt (after millis): wakes the tasks whose time has come, then picks a task. */
+fn os_tick() {
+    if (os_on == 0) { return; }
+    var i = 0;
+    while (i < os_n) {
+        var s = load8(os_state + i);
+        if (s == 2 || (s == 3 && load8(os_timed + i) != 0)) {
+            if (ms_count - load64(os_wake + 4 * i) >= 0) {
+                store8(os_state + i, 1);
+                store8(os_got + i, 0);
+            }
+        }
+        i = i + 1;
+    }
+    os_schedule();
+}
+
+/** The current task ends (its flowchart reached an Exit, or the main program its End). */
+fn os_exit() {
+    cli();
+    store8(os_state + os_cur, 0);
+    os_switch();
+}
+
+fn os_yield() {
+    cli();
+    os_switch();
+}
+
+/** Delay in a task: sleeps, and the other tasks run. */
+fn os_sleep(ms: float) {
+    if (!(ms > 0.0)) { return; }
+    var n = f2i(ms);
+    cli();
+    store64(os_wake + 4 * os_cur, ms_count + n);
+    store8(os_state + os_cur, 2);
+    os_switch();
+}
+
+/** Takes slot s: 1 when it got it, 0 when ms (> 0) passed first. ms <= 0 waits as long as it takes. */
+fn os_take(s, ms: float): int {
+    cli();
+    var c = load8(os_count + s);
+    if (c > 0) {
+        store8(os_count + s, c - 1);
+        sei();
+        return 1;
+    }
+    store8(os_timed + os_cur, 0);
+    if (ms > 0.0) {
+        store64(os_wake + 4 * os_cur, ms_count + f2i(ms));
+        store8(os_timed + os_cur, 1);
+    }
+    store8(os_obj + os_cur, s);
+    store8(os_got + os_cur, 0);
+    store8(os_state + os_cur, 3);
+    os_switch();
+    return load8(os_got + os_cur);
+}
+
+/** Gives slot s: to the highest-priority task waiting for it, or the count goes up (to at most max). */
+fn os_give(s, max) {
+    cli();
+    var best = -1;
+    var bp = -1;
+    var i = 0;
+    while (i < os_n) {
+        if (load8(os_state + i) == 3 && load8(os_obj + i) == s) {
+            var p = load8(os_prio + i);
+            if (p > bp) {
+                best = i;
+                bp = p;
+            }
+        }
+        i = i + 1;
+    }
+    if (best >= 0) {
+        store8(os_got + best, 1);
+        store8(os_state + best, 1);
+        if (bp > load8(os_prio + os_cur)) {
+            os_switch();
+            return;
+        }
+    } else {
+        var c = load8(os_count + s);
+        if (c < max) { store8(os_count + s, c + 1); }
+    }
+    sei();
+}
+
+fn os_number(n: float, what): int {
+    var i = f2i(n);
+    if (i < 0 || i > 7 || !(i2f(i) == n)) { fail(what); }
+    return i;
+}
+
+fn os_wait(s: float, ms: float): int {
+    return os_take(os_number(s, "Rtos.wait: semaphores are numbered 0 to 7"), ms);
+}
+
+fn os_signal(s: float) {
+    os_give(os_number(s, "Rtos.signal: semaphores are numbered 0 to 7"), 255);
+}
+
+fn os_lock(m: float) {
+    os_take(8 + os_number(m, "Rtos.lock: mutexes are numbered 0 to 7"), 0.0);
+}
+
+fn os_unlock(m: float) {
+    os_give(8 + os_number(m, "Rtos.unlock: mutexes are numbered 0 to 7"), 1);
+}
+
+fn os_console() {
+    os_take(OS_CONSOLE, 0.0);
+}
+
+fn os_console_done() {
+    os_give(OS_CONSOLE, 1);
+}
+
+/** The idle task: runs when no other task is ready. */
+fn os_idle() {
+    while (1) { }
+}

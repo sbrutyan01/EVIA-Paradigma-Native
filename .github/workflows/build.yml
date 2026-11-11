@@ -34,6 +34,8 @@ jobs:
           scripts/simavr/build.sh "$RUNNER_TEMP/simavr" /usr/lib/avr/include build/evia_sim
       - name: "AVR chips: programs in simavr against the interpreter, random tests, uploads through real bootloaders"
         run: scripts/check-avr.sh
+      - name: "RTOS: tasks, priorities, semaphores and mutexes on the ATmega32 and ATmega2560 in simavr"
+        run: scripts/check-rtos.sh
       - uses: actions/upload-artifact@v4
         with:
           name: evia-paradigma-native

@@ -36,6 +36,13 @@ final class NativeCompiler {
     /** The AVR chip's clock in Hz (for UART Open with a constant baud rate). */
     private long fcpu = 16000000;
 
+    /** RTOS: the classes with a method named task (one object each, its task started before the main program). */
+    private final List<BlockDef> tasks = new ArrayList<>();
+    /** The program runs on the RTOS kernel (avr/rtos.er): it has tasks or calls the Rtos class, on an AVR chip. */
+    private boolean rtos;
+    static final String RTOS_CLASS = "Rtos", TASK_METHOD = "task";
+    private static final int STACK_DEFAULT = 256, STACK_MIN = 128, IDLE_STACK = 112;
+
     private NativeCompiler(Library lib, Target t, AvrChip chip) {
         this.lib = lib;
         this.chip = chip;
@@ -54,8 +61,9 @@ final class NativeCompiler {
         String program = c.lower();
         NativeLang l = new NativeLang();
         l.add(read("avr/float.er"), "avr/float.er");
-        l.add(chip.runtime(fcpu), chip.key + ".er");
+        l.add(chip.runtime(fcpu, c.rtos ? c.heapNeeded() : -1), chip.key + ".er");
         l.add(read("avr/base.er"), "avr/base.er");
+        if (c.rtos) l.add(read("avr/rtos.er"), "avr/rtos.er");
         l.add(program, "program");
         AvrGen g = new AvrGen(l, chip);
         int[] words = g.compile();
@@ -116,6 +124,8 @@ final class NativeCompiler {
             children.put(d, all);
         }
 
+        if (chip != null) findTasks();
+
         String type = FAST ? "float" : "int";
         line("// ---- program variables");
         for (String g : globals) line("var v_" + g + ": " + type + ";");
@@ -124,9 +134,13 @@ final class NativeCompiler {
         line("fn main() {");
         line("    runtime_init();");
         if (!FAST) for (String g : globals) line("    v_" + g + " = UNDEF;");
-        line("    program_run();");
-        line("    exit_program(0);");
-        line("}");
+        if (rtos) {
+            rtosSetup();
+        } else {
+            line("    program_run();");
+            line("    exit_program(0);");
+            line("}");
+        }
         for (BlockDef d : lib.defs()) classCode(d);
         // the main program's objects, created on first use
         for (Map.Entry<String, BlockDef> o : children.get(null).entrySet()) {
@@ -146,6 +160,96 @@ final class NativeCompiler {
     }
 
     private final Map<BlockDef, LinkedHashSet<String>> fieldsOf = new HashMap<>();
+
+    // ================================================================ RTOS
+
+    private void findTasks() {
+        for (BlockDef d : lib.defs()) {
+            for (Method m : d.methods) {
+                if (!m.name.equals(TASK_METHOD)) continue;
+                if (!m.params.isEmpty()) {
+                    throw new FlowException(d.name + "." + TASK_METHOD + " is a task: it can't have parameters"
+                            + " (give the class fields instead)");
+                }
+                tasks.add(d);
+            }
+        }
+        boolean calls = false;
+        for (Block b : allBlocks()) if (b.type == BlockType.CUSTOM && isRtos(b)) calls = true;
+        rtos = calls || !tasks.isEmpty();
+    }
+
+    private List<Block> allBlocks() {
+        List<Block> all = new ArrayList<>(lib.main.getBlocks());
+        for (BlockDef d : lib.defs()) for (Method m : d.methods) all.addAll(m.body.getBlocks());
+        return all;
+    }
+
+    private static boolean isRtos(Block b) {
+        return b.def != null && b.def.name.equals(RTOS_CLASS);
+    }
+
+    /** A number field's initial value (a plain number), or dflt. */
+    private static int numberField(BlockDef d, String name, int dflt) {
+        for (int i = 0; i < d.fields.size(); i++) {
+            if (!d.fields.get(i).name().equals(name)) continue;
+            if (d.fieldInits.get(i) instanceof Expr.Num n) return (int) Math.round(n.value());
+            throw new FlowException(d.name + "." + name + " must start as a plain number (the RTOS reads it when"
+                    + " the program is built)");
+        }
+        return dflt;
+    }
+
+    /**
+     * The heap the objects take (RTOS: RAM goes to the task stacks instead): every object is a member of the main
+     * program, of a task or of another object, so their number is fixed. -1 if a class contains itself.
+     */
+    int heapNeeded() {
+        int sum = 8;
+        for (BlockDef d : tasks) sum += objectBytes(d, new HashSet<>());
+        for (BlockDef d : children.get(null).values()) sum += objectBytes(d, new HashSet<>());
+        return sum < 0 ? -1 : sum;
+    }
+
+    private int objectBytes(BlockDef d, Set<BlockDef> path) {
+        if (!path.add(d)) return Integer.MIN_VALUE / 4;
+        int n = (Math.max(SLOT * (fields.get(d).size() + children.get(d).size()), 8) + 3) & ~3;
+        for (BlockDef c : children.get(d).values()) n += objectBytes(c, path);
+        path.remove(d);
+        return n;
+    }
+
+    /** The rest of main(): the tasks' objects and stacks, then the main program as task 0. */
+    private void rtosSetup() {
+        if (tasks.size() > 14) throw new FlowException("the RTOS runs at most 14 tasks; this program has " + tasks.size());
+        StringBuilder decls = new StringBuilder();
+        line("    os_init();");
+        for (int i = 0; i < tasks.size(); i++) {
+            BlockDef d = tasks.get(i);
+            int prio = numberField(d, "priority", 1), stack = numberField(d, "stack", STACK_DEFAULT);
+            if (prio < 1 || prio > 250) throw new FlowException(d.name + ".priority must be 1 to 250 (the main program has 1)");
+            if (stack < STACK_MIN) throw new FlowException(d.name + ".stack must be at least " + STACK_MIN + " bytes");
+            decls.append("var os_o_").append(i + 1).append(": int;\n");
+            decls.append("buffer os_stack_").append(i + 1).append("[").append(stack).append("];\n");
+            line("    os_o_" + (i + 1) + " = " + className.get(d) + "_new();");
+            line("    os_add(" + prio + ", os_stack_" + (i + 1) + ", os_stack_" + (i + 1) + " + " + (stack - 1) + ");");
+        }
+        decls.append("buffer os_stack_idle[").append(IDLE_STACK).append("];\n");
+        line("    os_add(0, os_stack_idle, os_stack_idle + " + (IDLE_STACK - 1) + ");");
+        line("    os_yield();");
+        line("    program_run();");
+        line("    os_exit();");
+        line("}");
+        line("");
+        line("// ---- RTOS tasks");
+        out.append(decls);
+        line("fn os_run_task(id) {");
+        for (int i = 0; i < tasks.size(); i++) {
+            line("    if (id == " + (i + 1) + ") { " + className.get(tasks.get(i)) + "_m_" + TASK_METHOD + "(os_o_" + (i + 1) + "); return; }");
+        }
+        line("    os_idle();");
+        line("}");
+    }
 
     private int offset(BlockDef d, String field) {
         int i = fields.get(d).indexOf(field);
@@ -258,11 +362,13 @@ final class NativeCompiler {
                     go(b, 0);
                 }
                 case INPUT -> {
+                    if (rtos) stmt("os_console();");
                     assign(c.var(), (FAST ? "input_num(" : "input(") + string(c.var()) + ")", b);
+                    if (rtos) stmt("os_console_done();");
                     go(b, 0);
                 }
                 case DELAY -> {
-                    stmt((FAST ? "delay(" : "delay_v(") + value(c.expr(), b) + ");");
+                    stmt((rtos ? "os_sleep(" : FAST ? "delay(" : "delay_v(") + value(c.expr(), b) + ");");
                     go(b, 0);
                 }
                 case MILLIS -> {
@@ -279,7 +385,7 @@ final class NativeCompiler {
                     stmt("return " + owner.exitNames().indexOf(c.var()) + ";   // exit '" + comment(c.var()) + "'");
                 }
                 case CUSTOM -> {
-                    call(b, c);
+                    if (!rtos || !isRtos(b) || !rtosCall(b, c)) call(b, c);
                     if (b.next.length == 1) {
                         go(b, 0);
                     } else {
@@ -403,6 +509,42 @@ final class NativeCompiler {
             return "out_line(" + string(msg) + "); goto done;";
         }
 
+        /**
+         * A call of the Rtos class's sleep, yield, lock, unlock, wait or signal: the kernel, not the flowchart.
+         * False for its other methods (they run as written).
+         */
+        boolean rtosCall(Block b, Interpreter.Compiled c) {
+            String m = b.method().name;
+            List<String> args = new ArrayList<>();
+            for (Expr e : c.args()) args.add(value(e, b));
+            int want = switch (m) {
+                case "sleep", "lock", "unlock", "signal" -> 1;
+                case "yield" -> 0;
+                case "wait" -> 2;
+                default -> -1;
+            };
+            if (want < 0) return false;
+            if (args.size() != want) {
+                throw new FlowException(b, "Rtos." + m + " takes " + want + " value" + (want == 1 ? "" : "s"));
+            }
+            List<String> exits = b.method().exitNames();
+            switch (m) {
+                case "sleep" -> stmt("os_sleep(" + args.get(0) + ");");
+                case "yield" -> stmt("os_yield();");
+                case "lock" -> stmt("os_lock(" + args.get(0) + ");");
+                case "unlock" -> stmt("os_unlock(" + args.get(0) + ");");
+                case "signal" -> stmt("os_signal(" + args.get(0) + ");");
+                default -> {
+                    int got = Math.max(0, exits.indexOf("got")), timeout = Math.max(0, exits.indexOf("timeout"));
+                    stmt("if (os_wait(" + args.get(0) + ", " + args.get(1) + ") != 0) { rt_x = " + got + "; } else { rt_x = "
+                            + timeout + "; }");
+                    return true;
+                }
+            }
+            stmt("rt_x = 0;");
+            return true;
+        }
+
         /** The object first (created on first use), then the arguments from left to right, then the call. */
         void call(Block b, Interpreter.Compiled c) {
             String member = !b.objectName().isEmpty() ? "obj_" + b.objectName()
@@ -441,6 +583,21 @@ final class NativeCompiler {
             }
             F f = fast(e, b);
             List<F> parts = f.kind == TEXT ? f.parts : List.of(f);
+            if (rtos) {     // the numbers first (they may call methods), then the line in one go
+                List<String> nums = new ArrayList<>();
+                for (F p : parts) {
+                    if (p.kind == TEXT) continue;
+                    String t = "t" + temp++ + "_p";
+                    stmt("var " + t + " = " + numCode(p) + ";");
+                    nums.add(t);
+                }
+                stmt("os_console();");
+                int k = 0;
+                for (F p : parts) stmt(p.kind == TEXT ? "out_str(" + string(p.text) + ");" : "out_num(" + nums.get(k++) + ");");
+                stmt("out_byte(10);");
+                stmt("os_console_done();");
+                return;
+            }
             for (F p : parts) stmt(p.kind == TEXT ? "out_str(" + string(p.text) + ");" : "out_num(" + numCode(p) + ");");
             stmt("out_byte(10);");
         }

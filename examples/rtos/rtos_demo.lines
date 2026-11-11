@@ -1,0 +1,18 @@
+blinker done
+consumed 10
+consumed 20
+consumed 30
+consumed 40
+consumed 50
+EVIA RTOS on ATmega32
+main 1
+main 2
+main 3
+main done
+produced 10
+produced 20
+produced 30
+produced 40
+produced 50
+spinner counted to 40000
+timeout after 200 ms

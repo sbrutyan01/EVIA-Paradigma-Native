@@ -45,7 +45,7 @@ final class Packages {
     /** Where the updates come from: EVIA Paradigma Native's own index on the EVIA server (dell). */
     static final String DEFAULT_REPO = "https://evia.am/native/";
 
-    /** The application's jars: evia-paradigma-native-1.2.0.jar. */
+    /** The application's jars: evia-paradigma-native-1.3.0.jar. */
     static final String JAR_PREFIX = "evia-paradigma-native-";
 
     /** The id of the application package. */

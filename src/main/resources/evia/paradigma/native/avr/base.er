@@ -84,9 +84,12 @@ var heap_used: int;
 
 fn alloc(n): int {
     n = (n + 3) & ~3;
+    var s = load8(0x5F);                                  // SREG: interrupts held off (tasks may allocate)
+    cli();
     if (heap_used + n > HEAP) { fail("out of memory for objects"); }
     var p = heap + heap_used;
     heap_used = heap_used + n;
+    store8(0x5F, s);
     return p;
 }
 

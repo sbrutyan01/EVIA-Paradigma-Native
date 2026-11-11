@@ -31,6 +31,8 @@ final class AvrGen {
     private final Set<String> needed = new LinkedHashSet<>();
     /** The assembly floating point (AvrFloat) is called: emit it. */
     private int ramTop;
+    /** The program has tasks: the kernel (avr/rtos.er) is in it, and the timer interrupt can switch tasks. */
+    private boolean rtos;
 
     AvrGen(NativeLang lang, AvrChip chip) {
         this.lang = lang;
@@ -49,11 +51,14 @@ final class AvrGen {
             ram.put(b.getKey(), ramTop);
             ramTop += (int) (long) b.getValue();
         }
-        if (ramTop > chip.ramEnd() - 128) {
-            throw new IllegalStateException("the program needs " + (ramTop - chip.ramStart()) + " bytes of RAM; the "
-                    + chip.display() + " has " + (chip.ramEnd() + 1 - chip.ramStart()) + " (and the stack needs some)");
-        }
         boolean isr = lang.fns().containsKey("isr_timer0_ovf");
+        rtos = lang.fns().containsKey("os_tick");
+        int stack = rtos ? 256 : 128;      // RTOS: the main program's stack also takes the tick's interrupts
+        if (ramTop > chip.ramEnd() - stack) {
+            throw new IllegalStateException("the program needs " + (ramTop - chip.ramStart()) + " bytes of RAM; the "
+                    + chip.display() + " has " + (chip.ramEnd() + 1 - chip.ramStart()) + " (and the "
+                    + (rtos ? "main program's stack needs " + stack + "; give tasks smaller stack fields" : "stack needs some") + ")");
+        }
         for (int i = 0; i < chip.vectors(); i++) {
             a.jmpFixed(i == 0 ? "_start" : i == chip.timer0Ovf() && isr ? "_isr_t0" : "_bad_irq");
         }
@@ -61,6 +66,7 @@ final class AvrGen {
         // only the functions the code actually calls, starting from main (and the interrupt handler)
         needed.add("main");
         if (isr) needed.add("isr_timer0_ovf");
+        if (rtos) needed.addAll(List.of("os_tick", "os_schedule", "os_run_task", "os_exit"));
         Set<String> done = new HashSet<>();
         boolean more = true;
         while (more) {
@@ -139,7 +145,14 @@ final class AvrGen {
         a.rjmp("_end");
         a.label("_bad_irq");
         a.reti();
-        if (isr) {
+        if (isr && rtos) {
+            // the tick: the whole context of the running task onto its stack, millis, then the kernel picks a task
+            a.label("_isr_t0");
+            saveContext();
+            a.call("fn_isr_timer0_ovf");
+            a.call("fn_os_tick");
+            restoreContext();
+        } else if (isr) {
             a.label("_isr_t0");     // saves what any function may change, calls the handler
             a.push(0);
             a.in(0, SREG);
@@ -157,6 +170,98 @@ final class AvrGen {
         }
     }
 
+    // ================================================================ the RTOS kernel's context switch
+
+    /**
+     * r0, SREG, r1..r31 onto the stack (33 bytes, below the return address), r1 cleared, and the stack pointer
+     * into os_sp[os_cur]. Interrupts are off (an interrupt, or os_switch's callers).
+     */
+    private void saveContext() {
+        a.push(0);
+        a.in(0, SREG);
+        a.push(0);
+        a.push(1);
+        a.clr(1);
+        for (int r = 2; r <= 31; r++) a.push(r);
+        taskSlot();
+        a.in(T, SPL);
+        a.stdZ(0, T);
+        a.in(T, SPH);
+        a.stdZ(1, T);
+    }
+
+    /** The stack pointer from os_sp[os_cur], the context off that stack, and reti (which turns interrupts on). */
+    private void restoreContext() {
+        taskSlot();
+        a.lddZ(T, 0);
+        a.lddZ(T2, 1);
+        a.out(SPL, T);
+        a.out(SPH, T2);
+        for (int r = 31; r >= 2; r--) a.pop(r);
+        a.pop(1);
+        a.pop(0);
+        a.out(SREG, 0);
+        a.pop(0);
+        a.reti();
+    }
+
+    /** Z = os_sp + 4 * os_cur. */
+    private void taskSlot() {
+        int sp = ram.get("os_sp"), cur = ram.get("os_cur");
+        a.lds(ZL, cur);
+        a.clr(ZH);
+        a.lsl(ZL);
+        a.lsl(ZL);
+        a.subi(ZL, -sp & 0xFF);
+        a.sbci(ZH, (-sp >> 8) & 0xFF);
+    }
+
+    private void rtosAssembly(String name) {
+        switch (name) {
+            case "os_switch" -> {       // called with interrupts off; the same frame an interrupt makes
+                a.label("fn_os_switch");
+                saveContext();
+                a.call("fn_os_schedule");
+                restoreContext();
+            }
+            case "os_frame" -> {        // top in acc: a frame that "returns" to _os_entry with every register 0
+                a.label("fn_os_frame");
+                a.movw(ZL, A0);
+                a.ldiAddress(T, T2, "_os_entry");
+                a.lsr(T2);              // the word address
+                a.ror(T);
+                a.stdZ(0, T);           // a call pushes the low byte first
+                a.sbiw(ZL, 1);
+                a.stdZ(0, T2);
+                if (chip.pcBytes() == 3) {
+                    a.sbiw(ZL, 1);
+                    a.stdZ(0, 1);
+                }
+                a.ldi(T, 33);
+                String loop = a.newLabel("osf");
+                a.label(loop);
+                a.sbiw(ZL, 1);
+                a.stdZ(0, 1);
+                a.dec(T);
+                a.brne(loop);
+                a.sbiw(ZL, 1);          // the stack pointer points below the last byte pushed
+                a.movw(A0, ZL);
+                a.clr(A2);
+                a.clr(A3);
+                a.ret();
+                // where every task starts: its flowchart, then it ends
+                a.label("_os_entry");
+                a.lds(A0, ram.get("os_cur"));
+                a.clr(A1);
+                a.clr(A2);
+                a.clr(A3);
+                a.call("fn_os_run_task");
+                a.call("fn_os_exit");
+            }
+            default -> throw new IllegalStateException(name);
+        }
+    }
+
     // ================================================================ runtime functions in assembly
 
     /**
@@ -165,6 +270,10 @@ final class AvrGen {
      * Returns false for every other function.
      */
     private boolean assembly(String name) {
+        if (rtos && (name.equals("os_switch") || name.equals("os_frame"))) {
+            rtosAssembly(name);
+            return true;
+        }
         int ndig = ram.get("ndig"), ndn = ram.get("ndn");
         switch (name) {
             case "dig_from_int" -> {        // u >= 0 in acc: its digits, least significant first; at least one
