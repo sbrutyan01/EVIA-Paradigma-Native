@@ -6,7 +6,7 @@
 
     <groupId>evia</groupId>
     <artifactId>evia-paradigma-native</artifactId>
-    <version>1.0.1</version>
+    <version>1.1.0</version>
     <packaging>jar</packaging>
     <name>EVIA Paradigma Native</name>
 
