@@ -18,6 +18,8 @@ for src in examples/*.evia tests/programs/*.evia; do
   java -jar "$JAR" --run "$src" < "$input" > "$OUT/$name.expected.out" 2> "$OUT/$name.expected.err"
   echo $? > "$OUT/$name.expected.rc"
   sed -i '/^Picked up \(_JAVA_OPTIONS\|JAVA_TOOL_OPTIONS\|JDK_JAVA_OPTIONS\)/d' "$OUT/$name.expected.err"
+  # a fresh machine: Java's preferences log their first use on stderr, which is not the program's
+  sed -i '/java.util.prefs/d; /Created user preferences directory/d' "$OUT/$name.expected.err"
   for values in safe fast; do
     [[ "$name" == err_* && "$values" == fast ]] && continue
     id="$name.$values"

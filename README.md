@@ -11,7 +11,7 @@
   Visual block programming compiled straight to executables: no compiler, no assembler, no linker.
   <br><br>
   <a href="https://github.com/sbrutyan01/EVIA-Paradigma-Native/actions/workflows/build.yml"><img src="https://github.com/sbrutyan01/EVIA-Paradigma-Native/actions/workflows/build.yml/badge.svg" alt="build"></a>
-  <a href="https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/latest"><img src="https://img.shields.io/badge/version-1.0.0-blue" alt="version 1.0.0"></a>
+  <a href="https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/latest"><img src="https://img.shields.io/badge/version-1.0.1-blue" alt="version 1.0.1"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
 </p>
 
@@ -28,11 +28,11 @@ way: no languages, the program itself.
 
 | System | File |
 |---|---|
-| Windows 10 / 11 (x64) | `EVIA-Paradigma-Native-1.0.0-windows-x64.exe` |
-| macOS, Apple Silicon / Intel | `EVIA-Paradigma-Native-1.0.0-macos-arm64.dmg` / `-macos-x64.dmg` |
-| Ubuntu 22.04+ / Debian 12+ | `evia-paradigma-native_1.0.0_amd64.deb` (`/opt/evia-paradigma-native`, command `evia-paradigma-native`) |
-| Any Linux (x86-64) | `EVIA-Paradigma-Native-1.0.0-x86_64.AppImage` |
-| Any OS with Java 25 | `evia-paradigma-native-1.0.0.jar` |
+| Windows 10 / 11 (x64) | `EVIA-Paradigma-Native-1.0.1-windows-x64.exe` |
+| macOS, Apple Silicon / Intel | `EVIA-Paradigma-Native-1.0.1-macos-arm64.dmg` / `-macos-x64.dmg` |
+| Ubuntu 22.04+ / Debian 12+ | `evia-paradigma-native_1.0.1_amd64.deb` (`/opt/evia-paradigma-native`, command `evia-paradigma-native`) |
+| Any Linux (x86-64) | `EVIA-Paradigma-Native-1.0.1-x86_64.AppImage` |
+| Any OS with Java 25 | `evia-paradigma-native-1.0.1.jar` |
 
 From the [latest release](https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/latest). Each installer
 carries its own Java runtime. It installs next to EVIA Paradigma if you have both.
@@ -60,9 +60,9 @@ in WSL). Windows and ARM executables are the next steps.
 The command line does the same:
 
 ```
-java -jar evia-paradigma-native-1.0.0.jar --native program.evia -o program [--values fast]
+java -jar evia-paradigma-native-1.0.1.jar --native program.evia -o program [--values fast]
 ./program
-java -jar evia-paradigma-native-1.0.0.jar --run program.evia        # the interpreter
+java -jar evia-paradigma-native-1.0.1.jar --run program.evia        # the interpreter
 ```
 
 ## How it works
@@ -76,7 +76,7 @@ same language, in `src/main/resources/evia/paradigma/native/`. `NativeLang` comp
 ## Building from source
 
 ```
-mvn package                     # target/evia-paradigma-native-1.0.0.jar
+mvn package                     # target/evia-paradigma-native-1.0.1.jar
 scripts/check-native.sh         # every example and test against the interpreter, 100,000 numbers against Java
 scripts/check-app.sh            # the editor, classes, modules, projects and Git
 packaging/package.sh linux      # the .deb and the AppImage (windows, macos-arm64, macos-x64 on those systems)
