@@ -20,6 +20,8 @@ jobs:
         run: mvn -B package
       - name: The editor, classes, modules, projects and Git
         run: scripts/check-app.sh
+      - name: The Claude Code tab (a stand-in claude in a real pseudo-terminal)
+        run: scripts/check-claude-tab.sh
       - name: Native executables against the interpreter, and numbers against Java
         run: scripts/check-native.sh
       - name: simavr (built as scripts/simavr/evia_sim)

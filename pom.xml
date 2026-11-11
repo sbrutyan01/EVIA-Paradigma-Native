@@ -44,6 +44,12 @@
         </dependency>
         <!-- Terminal window, UART: serial ports on Windows, Linux and macOS (Apache 2.0 or LGPL v3) -->
         <dependency>
+            <!-- a local pseudo-terminal for the Claude Code tab (JetBrains, EPL 1.0) -->
+            <groupId>org.jetbrains.pty4j</groupId>
+            <artifactId>pty4j</artifactId>
+            <version>0.13.13</version>
+        </dependency>
+        <dependency>
             <groupId>com.fazecast</groupId>
             <artifactId>jSerialComm</artifactId>
             <version>2.11.4</version>
@@ -123,6 +129,8 @@
                                     <mainClass>evia.paradigma.App</mainClass>
                                     <manifestEntries>
                                         <Multi-Release>true</Multi-Release>
+                                        <!-- pty4j (the Claude Code tab) and jSerialComm load native code -->
+                                        <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
                                     </manifestEntries>
                                 </transformer>
                             </transformers>

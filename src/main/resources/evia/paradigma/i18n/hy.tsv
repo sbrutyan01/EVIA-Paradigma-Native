@@ -494,3 +494,14 @@ On the chip itself; Run simulates an Arduino board.	Հենց չիպի վրա. Գ
 The chip's clock (its crystal): millis, Delay and the serial port's speed depend on it	Չիպի տակտային հաճախությունը (նրա քվարցը). դրանից են կախված millis-ը, Ուշացումը և հաջորդական պորտի արագությունը
  Target:	 Թիրախ՝
 AVR chips use fast values: numbers (32-bit floats), text only in Print	AVR չիպերն օգտագործում են արագ արժեքներ՝ թվեր (32-բիթ float), տեքստ միայն Տպել-ում
+Start Claude Code	Գործարկել Claude Code-ը
+Choose the claude file...	Ընտրել claude ֆայլը...
+Claude Code starts here, in the program's folder, when you open this tab.	Claude Code-ը գործարկվում է այստեղ՝ ծրագրի թղթապանակում, երբ բացում եք այս ներդիրը։
+Try again	Կրկին փորձել
+Claude Code is not installed (no claude command found).	Claude Code-ը տեղադրված չէ (claude հրամանը չի գտնվել)։
+Install it, then press Try again:	Տեղադրեք այն, ապա սեղմեք «Կրկին փորձել»․
+or	կամ
+Could not start Claude Code: %s	Չհաջողվեց գործարկել Claude Code-ը․ %s
+Claude Code has ended.	Claude Code-ն ավարտեց աշխատանքը։
+The claude file (Claude Code)	claude ֆայլը (Claude Code)
+Claude Code, Anthropic's AI coding assistant, in a terminal in the program's folder	Claude Code՝ Anthropic-ի ԱԲ ծրագրավորման օգնականը, տերմինալում՝ ծրագրի թղթապանակում

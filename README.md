@@ -58,6 +58,11 @@ in WSL). Windows and ARM executables are the next steps.
 - **Build executable** (F7) writes the program: into the project's `build/` folder, or next to the program file.
 - **Run executable** (F6) builds and runs it; type Input into the field under the output.
 - **Values** in the toolbar: Safe or Fast.
+- **Claude Code** tab beside Output: [Claude Code](https://claude.com/claude-code), Anthropic's AI coding
+  assistant, in a real terminal, started in the program's folder when you open the tab (it can read and change the
+  `.evia` files there). It needs the `claude` command installed (`curl -fsSL https://claude.ai/install.sh | bash`,
+  on Windows `irm https://claude.ai/install.ps1 | iex`); the tab finds it on PATH or in the installers' folders, or
+  lets you pick the file. Running a program switches back to Output.
 
 ## Export App
 
@@ -160,6 +165,7 @@ scripts/check-avr.sh            # AVR programs in simavr against the interpreter
                                 #   scripts/simavr/build.sh, as in .github/workflows/build.yml)
 scripts/check-rtos.sh           # the RTOS: tasks, priorities, semaphores and mutexes in simavr
 scripts/check-app.sh            # the editor, classes, modules, projects and Git
+scripts/check-claude-tab.sh     # the Claude Code tab: a real terminal (and Claude Code itself when installed)
 packaging/package.sh linux      # the .deb and the AppImage (windows, macos-arm64, macos-x64 on those systems)
 ```
 

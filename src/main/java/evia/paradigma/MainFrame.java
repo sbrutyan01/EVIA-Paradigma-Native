@@ -83,6 +83,9 @@ final class MainFrame extends JFrame {
     private final FlowCanvas canvas = new FlowCanvas(lib, null);
     private final Map<BlockDef, ClassEditor> editors = new HashMap<>();
     private final JTextArea console = new JTextArea();
+    /** Output and the Claude Code terminal, as tabs under the canvas. */
+    private final JTabbedPane bottomTabs = new JTabbedPane();
+    private final ClaudeTerminal claude = new ClaudeTerminal(this::workFolder);
     private final JSlider speed = new JSlider(0, 1000, 300);
     private final JLabel status = new JLabel(" ");
     private final Action runAction, stopAction;
@@ -173,7 +176,7 @@ final class MainFrame extends JFrame {
         Theme.onChange(consoleColors);
         console.setMargin(new Insets(6, 8, 6, 8));
         JScrollPane consoleScroll = new JScrollPane(console);
-        consoleScroll.setBorder(BorderFactory.createTitledBorder(Text.t("Output")));
+        consoleScroll.setBorder(BorderFactory.createEmptyBorder());
         JComponent consoleBox = consoleScroll;
         if (App.nativeEdition()) {
             // Input for a running executable: a line typed here goes to its stdin
@@ -194,7 +197,13 @@ final class MainFrame extends JFrame {
         canvasScroll.getVerticalScrollBar().setUnitIncrement(16);
         canvasScroll.getHorizontalScrollBar().setUnitIncrement(16);
 
-        JSplitPane right = new JSplitPane(JSplitPane.VERTICAL_SPLIT, canvasScroll, consoleBox);
+        bottomTabs.addTab(Text.t("Output"), consoleBox);
+        bottomTabs.addTab("Claude Code", claude);
+        bottomTabs.setToolTipTextAt(1, Text.t("Claude Code, Anthropic's AI coding assistant, in a terminal in the program's folder"));
+        bottomTabs.addChangeListener(e -> {
+            if (bottomTabs.getSelectedComponent() == claude) claude.showing();
+        });
+        JSplitPane right = new JSplitPane(JSplitPane.VERTICAL_SPLIT, canvasScroll, bottomTabs);
         right.setResizeWeight(0.78);
 
         JPanel paletteBox = new JPanel(new BorderLayout());
@@ -735,7 +744,7 @@ final class MainFrame extends JFrame {
     private void run() {
         if (worker != null) return;
         for (FlowCanvas c : lib.canvases()) c.clearMarks();
-        console.setText("");
+        clearOutput();
 
         Block start;
         try {
@@ -909,7 +918,7 @@ final class MainFrame extends JFrame {
             hex = exe.resolveSibling(exe.getFileName() + ".hex");
             Files.writeString(hex, r.hex(), StandardCharsets.US_ASCII);
         } catch (FlowException e) {
-            console.setText("");
+            clearOutput();
             reportError(e);
             return;
         } catch (IllegalStateException | IllegalArgumentException e) {
@@ -926,7 +935,7 @@ final class MainFrame extends JFrame {
                 (System.nanoTime() - started) / 1_000_000));
         if (!upload) return;
         if (Settings.serialPort().isEmpty() && !Settings.nativeUpload().equals("usbasp") && !ChipRunner.choose(this, chip)) return;
-        console.setText("");
+        clearOutput();
         uploading = true;
         chipRunner.upload(chip, hex, r.hex(), () -> {
             exeInput.setEnabled(true);
@@ -953,7 +962,7 @@ final class MainFrame extends JFrame {
             status.setText(String.format("Built %s: %,d bytes of machine code for Linux x86-64 in %d ms (%s values).",
                     exe, r.executable().length, (System.nanoTime() - started) / 1_000_000, t.values().display.toLowerCase()));
         } catch (FlowException e) {
-            console.setText("");
+            clearOutput();
             reportError(e);
             return;
         } catch (IOException e) {
@@ -963,7 +972,7 @@ final class MainFrame extends JFrame {
         if (!run) return;
         boolean here = System.getProperty("os.name", "").toLowerCase().contains("linux")
                 && System.getProperty("os.arch", "").matches("amd64|x86_64");
-        console.setText("");
+        clearOutput();
         if (!here) {
             console.append(">> " + exe.getFileName() + " is a Linux x86-64 program; this computer is "
                     + System.getProperty("os.name") + " " + System.getProperty("os.arch") + ". Copy it to a Linux PC to run it.\n");
@@ -1009,7 +1018,7 @@ final class MainFrame extends JFrame {
         try {
             r = NativeCompiler.compile(lib, Settings.target());
         } catch (FlowException e) {
-            console.setText("");
+            clearOutput();
             reportError(e);
             return;
         }
@@ -1064,7 +1073,7 @@ final class MainFrame extends JFrame {
             List<Path> files = AppExport.export(r.executable(), new AppExport.Options(name.getText().strip(),
                     command.getText().strip(), version.getText().strip(), about.getText().strip(),
                     exe.isSelected(), tgz.isSelected(), deb.isSelected()), Path.of(folder.getText().strip()));
-            console.setText("");
+            clearOutput();
             console.append(">> exported " + name.getText().strip() + " to " + folder.getText().strip() + ":\n");
             for (Path x : files) console.append("   " + x.getFileName() + "   (" + String.format("%,d", Files.size(x)) + " bytes)\n");
             console.append("\n   Executable:  copy it to any x86-64 Linux and run ./" + command.getText().strip() + "\n"
@@ -1128,7 +1137,7 @@ final class MainFrame extends JFrame {
             }
             status.setText("Generated " + code.lines().count() + " lines of " + t.describe() + "." + where);
         } catch (FlowException e) {
-            console.setText("");
+            clearOutput();
             reportError(e);
         }
     }
@@ -1152,7 +1161,7 @@ final class MainFrame extends JFrame {
                 status.setText("Highlighted " + lines + " line(s) of " + t.lang() + " generated from " + describe(what) + ".");
             }
         } catch (FlowException e) {
-            console.setText("");
+            clearOutput();
             reportError(e);
         }
     }
@@ -1210,8 +1219,21 @@ final class MainFrame extends JFrame {
         return r == JOptionPane.NO_OPTION;
     }
 
+    /** Empties Output and shows it (a program is about to run or be built). */
+    private void clearOutput() {
+        console.setText("");
+        bottomTabs.setSelectedIndex(0);
+    }
+
+    /** Where Claude Code starts: the open program's folder, else the project's. */
+    private File workFolder() {
+        if (currentFile != null) return currentFile.getAbsoluteFile().getParentFile();
+        return project != null ? project.dir.toFile() : null;
+    }
+
     private void exit() {
         if (!confirmDiscard()) return;
+        claude.stop();
         dispose();
         System.exit(0);
     }
@@ -1221,7 +1243,7 @@ final class MainFrame extends JFrame {
         currentFile = file;
         project = p;
         if (p != null && p.target() != null) Settings.setTarget(p.target());   // the project's language
-        console.setText("");
+        clearOutput();
         markSaved();
         updateTitle();
     }

@@ -6,7 +6,9 @@ EVIA Paradigma itself is MIT licensed (see `LICENSE`). The jar and the installer
 |---|---|---|
 | [FlatLaf](https://github.com/JFormDesigner/FlatLaf) 3.8, © FormDev Software GmbH | the IntelliJ look: light theme and Darcula | Apache License 2.0 |
 | [JediTerm](https://github.com/JetBrains/jediterm) 3.76, © JetBrains s.r.o. | the Terminal window's terminal emulator | LGPL v3 or Apache License 2.0 (used under Apache 2.0) |
-| [Kotlin standard library](https://github.com/JetBrains/kotlin) 2.4.0, © JetBrains s.r.o. | needed by JediTerm | Apache License 2.0 |
+| [Kotlin standard library](https://github.com/JetBrains/kotlin) 2.4.0, © JetBrains s.r.o. | needed by JediTerm and pty4j | Apache License 2.0 |
+| [pty4j](https://github.com/JetBrains/pty4j) 0.13.13, © JetBrains s.r.o. | the Claude Code tab's local pseudo-terminal (its native libraries included) | Eclipse Public License 1.0 (source: the link) |
+| [JNA](https://github.com/java-native-access/jna) 5.14.0 (jna and jna-platform), © Timothy Wall and contributors | needed by pty4j | Apache License 2.0 or LGPL v2.1 (used under Apache 2.0) |
 | [jSerialComm](https://github.com/Fazecast/jSerialComm) 2.11.4, © Fazecast, Inc. | the Terminal window's serial ports (UART) | Apache License 2.0 or LGPL v3 (used under Apache 2.0) |
 | [JSch](https://github.com/mwiede/jsch) 2.28.8 (mwiede's fork), © ymnk, JCraft, Inc. and contributors | the Terminal window's SSH | BSD-style licence |
 | [SLF4J](https://www.slf4j.org) 2.0.9 (api and nop), © QOS.ch | JediTerm's logging, switched off | MIT License |

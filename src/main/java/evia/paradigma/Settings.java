@@ -549,6 +549,15 @@ final class Settings {
     }
 
     /** The board's serial port for Upload, e.g. COM3 or /dev/ttyACM0 (empty: ask). */
+    /** The Claude Code executable chosen by hand ("": look for it). */
+    static String claudePath() {
+        return PREFS.get("claudePath", "");
+    }
+
+    static void setClaudePath(String path) {
+        PREFS.put("claudePath", path.trim());
+    }
+
     static String serialPort() {
         return PREFS.get("serialPort", "");
     }

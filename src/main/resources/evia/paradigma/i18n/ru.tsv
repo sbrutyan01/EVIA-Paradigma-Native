@@ -494,3 +494,14 @@ On the chip itself; Run simulates an Arduino board.	На самом чипе; З
 The chip's clock (its crystal): millis, Delay and the serial port's speed depend on it	Тактовая частота чипа (его кварц): от неё зависят millis, Задержка и скорость последовательного порта
  Target:	 Цель:
 AVR chips use fast values: numbers (32-bit floats), text only in Print	Чипы AVR используют быстрые значения: числа (32-битные float), текст только в Печати
+Start Claude Code	Запустить Claude Code
+Choose the claude file...	Выбрать файл claude...
+Claude Code starts here, in the program's folder, when you open this tab.	Claude Code запускается здесь, в папке программы, когда вы открываете эту вкладку.
+Try again	Попробовать снова
+Claude Code is not installed (no claude command found).	Claude Code не установлен (команда claude не найдена).
+Install it, then press Try again:	Установите его, затем нажмите «Попробовать снова»:
+or	или
+Could not start Claude Code: %s	Не удалось запустить Claude Code: %s
+Claude Code has ended.	Claude Code завершил работу.
+The claude file (Claude Code)	Файл claude (Claude Code)
+Claude Code, Anthropic's AI coding assistant, in a terminal in the program's folder	Claude Code, ИИ-помощник Anthropic для программирования, в терминале в папке программы
