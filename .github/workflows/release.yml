@@ -1,9 +1,8 @@
 name: release
 
-# Builds native installers with their own Java runtime:
+# Builds the installers of EVIA Paradigma Native with their own Java runtime:
 #   Windows 10/11 x64 .exe, macOS .dmg (Apple Silicon and Intel), Ubuntu/Debian .deb, Linux AppImage.
-# They are online installers: the toolchains are packages of the EVIA server (https://evia.am/packages/),
-# which the application installs and updates itself. XC32 is never one: its licence forbids passing it on.
+# Each one is smoke-tested by compiling an example to a native executable (and running it on Linux).
 # On pushes to main the installers are built and tested (artifacts only).
 # Publishing a GitHub release (or pushing a v* tag) attaches them to the release.
 on:
@@ -26,9 +25,6 @@ concurrency:
   group: release-${{ inputs.tag || github.event.release.tag_name || github.ref_name }}
   cancel-in-progress: false
 
-env:
-  CLANG_VERSION: "23"
-
 jobs:
   jar:
     runs-on: ubuntu-24.04
@@ -43,27 +39,8 @@ jobs:
           cache: maven
       - name: Build with Maven
         run: mvn -B package
-      - name: Install Clang ${{ env.CLANG_VERSION }}
-        if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/')
-        run: |
-          # apt.llvm.org is sometimes unreachable: retry, then fall back to Ubuntu's Clang
-          for i in 1 2 3 4 5; do
-            if wget -qO llvm.sh https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh "$CLANG_VERSION"; then
-              echo "CXX=clang++-$CLANG_VERSION" >> "$GITHUB_ENV"
-              break
-            fi
-            echo "apt.llvm.org attempt $i failed"; sleep 30
-          done
-          if ! grep -q '^CXX=' "$GITHUB_ENV"; then
-            echo "::warning::apt.llvm.org unreachable - checking with Ubuntu's clang++ instead of Clang $CLANG_VERSION"
-            sudo apt-get install -y clang
-            echo "CXX=clang++" >> "$GITHUB_ENV"
-          fi
-      - name: Verify generated C++ against the interpreter
-        if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/')
-        run: |
-          "$CXX" --version
-          scripts/check-examples.sh "$CXX"
+      - name: Native executables against the interpreter, and numbers against Java
+        run: scripts/check-native.sh
       - name: How big the jar came out
         run: |
           for f in target/evia-paradigma-*.jar; do
@@ -113,15 +90,8 @@ jobs:
       # From 0.9.0 the installers are online installers: the application and its Java runtime only. The
       # toolchains are packages of the EVIA server (scripts/build-packages.sh, published on dell by the
       # site-dell workflow), picked on the first start and kept up to date from inside the application.
-      - name: Build installer
-        run: packaging/package.sh ${{ matrix.kind }}
-      - name: Test the .deb on Ubuntu 22.04/24.04 and Debian 12/13
-        if: matrix.kind == 'linux'
-        run: packaging/test-deb.sh packages/evia-paradigma_*.deb
-      # EVIA Paradigma Native: the same jar with -Devia.edition=native (Build makes executables straight from the
-      # blocks, no code generation), its own names so both editions install side by side
       - name: Build the installer of EVIA Paradigma Native
-        run: EDITION=native packaging/package.sh ${{ matrix.kind }}
+        run: packaging/package.sh ${{ matrix.kind }}
       - name: How big the installer came out
         shell: bash
         run: |
@@ -160,9 +130,9 @@ jobs:
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" "${files[@]}" --clobber
             if [ -f "$notes" ] && [ -z "$(gh release view "$TAG" --json body --jq .body)" ]; then
-              gh release edit "$TAG" --title "EVIA Paradigma $TAG" --notes-file "$notes"
+              gh release edit "$TAG" --title "EVIA Paradigma Native $TAG" --notes-file "$notes"
             fi
           else
             if [ -f "$notes" ]; then args=(--notes-file "$notes"); else args=(--generate-notes); fi
-            gh release create "$TAG" "${files[@]}" --title "EVIA Paradigma $TAG" "${args[@]}"
+            gh release create "$TAG" "${files[@]}" --title "EVIA Paradigma Native $TAG" "${args[@]}"
           fi

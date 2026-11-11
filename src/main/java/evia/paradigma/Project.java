@@ -102,7 +102,7 @@ final class Project {
         Files.writeString(dir.resolve("README.md"), """
                 # %s
 
-                A visual program made with [EVIA Paradigma](https://github.com/sbrutyan01/EVIA-Paradigma).
+                A visual program made with [EVIA Paradigma Native](https://github.com/sbrutyan01/EVIA-Paradigma-Native).
 
                 * `main.evia` - the main program (open the project folder or `%s` in EVIA Paradigma)
                 * `modules/` - class modules (`*.eviam`) used by the program

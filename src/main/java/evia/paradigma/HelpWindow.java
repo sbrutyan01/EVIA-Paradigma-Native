@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 
 /** The user guide (bundled HTML with a topic list) and the other Help menu actions. */
 final class HelpWindow extends JFrame {
-    static final String REPO = "https://github.com/sbrutyan01/EVIA-Paradigma";
+    static final String REPO = "https://github.com/sbrutyan01/EVIA-Paradigma-Native";
 
     /** Guide languages: code, name (in that language), window title, topic names (same order as ANCHORS). */
     private record Lang(String code, String name, String title, String[] topics) {}
@@ -192,7 +192,7 @@ final class HelpWindow extends JFrame {
         new SwingWorker<String, Void>() {
             @Override protected String doInBackground() throws Exception {
                 HttpURLConnection c = (HttpURLConnection) URI.create(
-                        "https://api.github.com/repos/sbrutyan01/EVIA-Paradigma/releases/latest").toURL().openConnection();
+                        "https://api.github.com/repos/sbrutyan01/EVIA-Paradigma-Native/releases/latest").toURL().openConnection();
                 c.setRequestProperty("Accept", "application/vnd.github+json");
                 c.setRequestProperty("User-Agent", "EVIA-Paradigma/" + App.VERSION);
                 c.setConnectTimeout(15000);

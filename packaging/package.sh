@@ -16,7 +16,7 @@ set -euo pipefail
 
 KIND="${1:?usage: package.sh linux|windows|macos-arm64|macos-x64}"
 VERSION=$(sed -n 's:^    <version>\(.*\)</version>:\1:p' pom.xml | head -n 1)
-EDITION="${EDITION:-}"
+EDITION="${EDITION:-native}"   # this project builds EVIA Paradigma Native
 NAME="EVIA Paradigma"
 SLUG="EVIA-Paradigma"          # in the installers' file names
 DEB=evia-paradigma

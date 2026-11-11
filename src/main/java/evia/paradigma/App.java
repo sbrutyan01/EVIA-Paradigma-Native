@@ -14,14 +14,14 @@ import java.io.File;
  */
 public final class App {
     /** Released version, shown by --version and in the About dialog. */
-    public static final String VERSION = "0.11.0";
+    public static final String VERSION = "1.0.0";
 
     /**
      * EVIA Paradigma Native: the same editor, but no code generation. Build makes an executable straight from the
      * blocks (NativeCompiler). Its installers set -Devia.edition=native; "--edition native" does the same.
      */
     static boolean nativeEdition() {
-        return "native".equals(System.getProperty("evia.edition"));
+        return true;   // EVIA Paradigma Native: a project of its own, forked from EVIA Paradigma 0.11.0
     }
 
     /** The name of this edition, for titles and dialogs. */
@@ -34,7 +34,7 @@ public final class App {
             System.setProperty("evia.edition", args[1]);
             args = java.util.Arrays.copyOfRange(args, 2, args.length);
         }
-        if (handOver(args)) return;
+        // updates come as new installers from this project's releases (Help, Check for Updates), not as packages
         if (args.length > 0 && args[0].startsWith("-")) {
             System.setProperty("java.awt.headless", "true");
             System.exit(Cli.run(args));
@@ -46,8 +46,7 @@ public final class App {
             f.setVisible(true);
             if (toOpen != null) f.openFile(toOpen);
             // the first start of an installed copy: pick the toolchains; later starts: a quiet check for updates
-            if (PackagesDialog.welcomeDue()) SwingUtilities.invokeLater(() -> PackagesDialog.show(f, true));
-            else PackagesDialog.checkInBackground(f::notice);
+            // no toolchains to fetch: the compiler is built in
             // macOS delivers double-clicked documents through an event instead of arguments
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.APP_OPEN_FILE)) {
                 Desktop.getDesktop().setOpenFileHandler(e -> {
