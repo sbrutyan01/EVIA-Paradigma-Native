@@ -110,5 +110,42 @@ for seed in $(seq 1 "${AVR_RANDOM_SEEDS:-8}"); do
 done
 [ "$wrong" = 0 ] && echo "ok    random tests: $runs lines of results on the ATmega8 and ATmega2560, as Java and IEEE float32 have them"
 
+# ---- 4. upload: the built-in uploader (AvrUpload) through the real bootloaders - Optiboot from MiniCore and
+#         MightyCore, the Mega 2560's STK500v2 bootloader - running in simavr on a pseudo-terminal, then the
+#         program it wrote must run. The bootloaders (GPL) are downloaded, at fixed commits, not kept here.
+BOOT="$OUT/bootloaders"
+mkdir -p "$BOOT"
+GH=https://raw.githubusercontent.com
+BOOTLOADERS=(
+  "atmega8 $GH/MCUdude/MiniCore/d62c83555b66b7650e635e52415b6a436a342bb5/avr/bootloaders/optiboot_flash/bootloaders/atmega8/16000000L/optiboot_flash_atmega8_UART0_115200_16000000L_B5.hex 8c9cf5a88e13f62223044417a26fe24c6d187f7aa56d4b3dc7f35dbb4a0f6656"
+  "atmega16 $GH/MCUdude/MightyCore/279a9372686c7f2fec61935f90669f5cf20243fc/avr/bootloaders/optiboot_flash/bootloaders/atmega16/16000000L/optiboot_flash_atmega16_UART0_115200_16000000L_B0.hex ceccffc4b96ec6893bb3d5ee2872f3fe3b05770258c8e93725d315e06ee6b1f5"
+  "atmega32 $GH/MCUdude/MightyCore/279a9372686c7f2fec61935f90669f5cf20243fc/avr/bootloaders/optiboot_flash/bootloaders/atmega32/16000000L/optiboot_flash_atmega32_UART0_115200_16000000L_B0.hex 9620eca72a313163ffa63936dfc412fbe5265438ab7d1d51f69b958b502de620"
+  "atmega2560 $GH/arduino/ArduinoCore-avr/11b9130371e8447920edb65a75706a6c951e51fc/bootloaders/stk500v2/stk500boot_v2_mega2560.hex 081bd53f385df747b03bdafe7e154c1f72589f490be8138f3c4cc5517c93253b"
+)
+javac -cp "$JAR" -d "$RT/classes" scripts/avr-checks/evia/paradigma/AvrUploadTest.java
+uploaded=0
+for b in "${BOOTLOADERS[@]}"; do
+  set -- $b
+  mcu=$1; url=$2; sum=$3
+  if ! curl -fsSL -o "$BOOT/$mcu.hex" "$url" || ! echo "$sum  $BOOT/$mcu.hex" | sha256sum -c --quiet - > /dev/null 2>&1; then
+    echo "skip  upload to the $mcu: its bootloader could not be downloaded"; continue
+  fi
+  base="$BOOT/blink-$mcu"
+  java -jar "$JAR" --avr examples/boards/blink.evia --chip "$mcu" -o "$base.hex" > /dev/null
+  "$EVIA_SIM" "$mcu" - --boot "$BOOT/$mcu.hex" --pty --seconds 60 > /dev/null 2> "$base.sim" &
+  sim=$!
+  for _ in $(seq 50); do grep -q "pty /dev/" "$base.sim" && break; sleep 0.1; done
+  port=$(grep -o "/dev/pts/[0-9]*" "$base.sim")
+  timeout 60 java --enable-native-access=ALL-UNNAMED -cp "$RT/classes:$JAR" evia.paradigma.AvrUploadTest "$mcu" "$base.hex" "$port" 3 \
+      > "$base.out" 2> "$base.err"
+  kill "$sim" 2> /dev/null; wait "$sim" 2> /dev/null
+  if [ "$(head -n 2 "$base.out")" = "$(printf 'blink 1\nblink 2')" ]; then
+    uploaded=$((uploaded + 1))
+  else
+    fail "upload to the $mcu"; grep -v WARNING "$base.err" | head -n 3; head -n 3 "$base.out"
+  fi
+done
+[ "$uploaded" -gt 0 ] && echo "ok    upload: $uploaded chips written through their bootloaders, and the program ran"
+
 echo "AVR: $ok passed, $refused not for these chips, $failed failed"
 [ "$failed" = 0 ]

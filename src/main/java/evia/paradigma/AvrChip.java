@@ -78,7 +78,52 @@ enum AvrChip {
         this.pinTimers = pinTimers;
     }
 
+    String key() { return key; }
     String display() { return display; }
+
+    /** The three signature bytes the chip answers with (what an uploader checks before writing). */
+    int[] signature() {
+        return switch (this) {
+            case ATMEGA8 -> new int[]{0x1E, 0x93, 0x07};
+            case ATMEGA16 -> new int[]{0x1E, 0x94, 0x03};
+            case ATMEGA32 -> new int[]{0x1E, 0x95, 0x02};
+            case ATMEGA2560 -> new int[]{0x1E, 0x98, 0x01};
+        };
+    }
+
+    /** Bytes in a flash page (the unit a bootloader writes). */
+    int pageBytes() {
+        return switch (this) {
+            case ATMEGA8 -> 64;
+            case ATMEGA16, ATMEGA32 -> 128;
+            case ATMEGA2560 -> 256;
+        };
+    }
+
+    /** The bootloader's protocol: STK500 version 2 on the Mega 2560 (avrdude's "wiring"), else version 1 (Optiboot). */
+    boolean stk500v2() {
+        return this == ATMEGA2560;
+    }
+
+    /** The board people use the chip on, for messages and the menus. */
+    String board() {
+        return switch (this) {
+            case ATMEGA8 -> "ATmega8 (MiniCore, Optiboot)";
+            case ATMEGA16 -> "ATmega16 (MightyCore, Optiboot)";
+            case ATMEGA32 -> "ATmega32 (MightyCore, Optiboot)";
+            case ATMEGA2560 -> "Arduino Mega 2560";
+        };
+    }
+
+    /** The blocks a program on these chips can use: the language's own, and of the board blocks these. */
+    static boolean supports(BlockType t) {
+        if (!t.isBoard()) return !t.isPhone();
+        return switch (t) {
+            case PIN_MODE, DIGITAL_WRITE, DIGITAL_READ, ANALOG_READ, ANALOG_WRITE, DELAY, MILLIS,
+                 UART_OPEN, UART_WRITE, UART_READ -> true;
+            default -> false;
+        };
+    }
     int flashBytes() { return flash; }
     int bootloaderBytes() { return bootloader; }
     int ramStart() { return ramStart; }

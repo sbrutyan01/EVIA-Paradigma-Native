@@ -584,6 +584,45 @@ final class Settings {
         fire();
     }
 
+    /** The Native edition's target: null for an executable for Linux x86-64, else the AVR chip to build for. */
+    static AvrChip nativeChip() {
+        String k = PREFS.get("native.chip", "");
+        try {
+            return k.isEmpty() ? null : AvrChip.of(k);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    static void setNativeChip(AvrChip chip) {
+        if (chip == nativeChip()) return;
+        PREFS.put("native.chip", chip == null ? "" : chip.key());
+        fire();
+    }
+
+    /** The AVR chip's clock in Hz (16 MHz unless set). */
+    static long nativeClock() {
+        return PREFS.getLong("native.clock", 16_000_000L);
+    }
+
+    static void setNativeClock(long hz) {
+        if (hz == nativeClock()) return;
+        PREFS.putLong("native.clock", hz);
+        fire();
+    }
+
+    /**
+     * How a .hex gets to the chip: "bootloader" (over the serial port, built in: STK500 v1 for Optiboot, v2 on the
+     * Mega 2560) or an avrdude programmer ("usbasp", "stk500v1 -b 19200" for Arduino as ISP, "avrispmkII").
+     */
+    static String nativeUpload() {
+        return PREFS.get("native.upload", "bootloader");
+    }
+
+    static void setNativeUpload(String how) {
+        PREFS.put("native.upload", how);
+    }
+
     /**
      * The compile command for a target, derived from the C++ compiler setting: the matching
      * C compiler for C (clang++ -> clang, g++ -> gcc, c++ -> cc), the target's -std= flag,

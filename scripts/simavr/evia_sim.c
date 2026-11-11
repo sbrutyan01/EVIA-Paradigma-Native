@@ -12,16 +12,26 @@
  *     --adc 7          feed ADC channel 7 with the interpreter's analog signal: 0..1023..0 over 4 s
  *     --uart-loop      wire the UART's TX to its RX (what the interpreter's serial port does)
  *     --input FILE     type FILE into the first UART, a byte every millisecond (a program's Input)
+ *     --boot BOOT.hex  a bootloader too (at its own address): the chip starts in it, as after a reset
+ *                      by the reset pin (program.hex may be "-": an empty flash)
+ *     --pty            the first UART on a pseudo-terminal (its name goes to stderr), in real time and
+ *                      starting when the first byte arrives: an uploader can talk to the bootloader
  *     --i2c 80         an I2C device at 7-bit address 80 with 256 registers, all 0 at the start - the
  *                      device the interpreter's simulated board has (SPI needs nothing: the chip's own
  *                      model already returns the byte it sent)
  *
  * Built against simavr's simulator core (without its ELF loader, so libelf isn't needed).
  */
+#define _XOPEN_SOURCE 600
+#define _DEFAULT_SOURCE
+#include <errno.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
+#include <unistd.h>
 #include "sim_avr.h"
 #include "sim_hex.h"
 #include "avr_uart.h"
@@ -29,6 +39,7 @@
 #include "sim_cycle_timers.h"
 #include "avr_adc.h"
 #include "avr_twi.h"
+#include "avr_watchdog.h"
 
 /* sim_hex.c can also load ELF files; evia_sim only loads HEX, so these are never called. */
 struct elf_firmware_t;
@@ -46,8 +57,17 @@ static avr_t *avr;
 static avr_irq_t *uart_in[2];
 static int uart_loop;
 
+static int pty = -1;          /* --pty: the master side */
+static int uart_xoff = 1;     /* the chip can't take a byte now: until it first polls its receiver, and while full */
+static int pty_pending = -1;  /* a byte that came before the chip could take it */
+
 static void uart_out(struct avr_irq_t *irq, uint32_t value, void *param) {
     (void) irq;
+    if (pty >= 0 && (intptr_t) param == 0) {
+        uint8_t c = (uint8_t) value;
+        if (write(pty, &c, 1) != 1) { /* nobody is listening: dropped, as on a wire */ }
+        return;
+    }
     putchar((int) (value & 0xFF));
     if (uart_loop && uart_in[(intptr_t) param]) avr_raise_irq(uart_in[(intptr_t) param], value & 0xFF);
 }
@@ -141,6 +161,56 @@ static avr_cycle_count_t adc_tick(struct avr_t *a, avr_cycle_count_t when, void 
     return when + avr->frequency / 1000;
 }
 
+static void uart_xon(struct avr_irq_t *irq, uint32_t value, void *param) {
+    (void) irq; (void) value; (void) param;
+    uart_xoff = 0;
+}
+
+static void uart_xoff_on(struct avr_irq_t *irq, uint32_t value, void *param) {
+    (void) irq; (void) value; (void) param;
+    uart_xoff = 1;
+}
+
+/* --pty: a byte from the uploader into UART 0 when the chip can take it, at most one per byte time */
+static avr_cycle_count_t pty_tick(struct avr_t *a, avr_cycle_count_t when, void *param) {
+    (void) a;
+    (void) param;
+    uint8_t c;
+    if (!uart_xoff) {
+        if (pty_pending >= 0) {
+            avr_raise_irq(uart_in[0], (uint32_t) pty_pending);
+            pty_pending = -1;
+        } else if (read(pty, &c, 1) == 1) {
+            avr_raise_irq(uart_in[0], c);
+        }
+    }
+    return when + avr->frequency / 11520;   /* 10 bits at 115200 baud */
+}
+
+/* The ATmega8, 16 and 32 share one address between UBRRH and UCSRC; a write with URSEL (bit 7) set is UCSRC.
+   simavr takes every write as UBRRH, so a program that sets the frame format (Optiboot does) gets a baud rate of
+   about 1300. This puts the divisor's high byte back and lets the UART work out the rate again. */
+#define UBRRH_UCSRC 0x40
+#define UBRRL_ADDR 0x29
+static uint8_t ubrrh_value;
+
+static void ursel_write(struct avr_t *a, avr_io_addr_t addr, uint8_t v, void *param) {
+    (void) param;
+    if (!(v & 0x80)) {
+        ubrrh_value = v;
+        return;
+    }
+    a->data[addr] = ubrrh_value;
+    avr_io_addr_t l = AVR_DATA_TO_IO(UBRRL_ADDR);
+    if (a->io[l].w.c) a->io[l].w.c(a, UBRRL_ADDR, a->data[UBRRL_ADDR], a->io[l].w.param);
+}
+
+static long long wall_us(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (long long) tv.tv_sec * 1000000 + tv.tv_usec;
+}
+
 /* ---- --input: the file's bytes into UART 0, one a millisecond (slower than the chip reads them) */
 static FILE *input;
 
@@ -184,24 +254,51 @@ int main(int argc, char **argv) {
     }
     avr_global_logger_set(quiet_log);
     avr_init(avr);
+    if (!strcmp(argv[1], "atmega8") || !strcmp(argv[1], "atmega16") || !strcmp(argv[1], "atmega32")) {
+        avr_register_io_write(avr, UBRRH_UCSRC, ursel_write, NULL);
+    }
+    /* A watchdog without an interrupt (ATmega8, 16, 32) leaves its interrupt's IRQs uninitialised, and simavr's
+       watchdog then crashes at the second reset (a bootloader's watchdog reset): initialise them. */
+    for (avr_io_t *io = avr->io_port; io; io = io->next) {
+        if (strcmp(io->kind, "watchdog") != 0) continue;
+        avr_watchdog_t *wd = (avr_watchdog_t *) io;
+        static const char *names[AVR_INT_IRQ_COUNT] = {">wdt.pending", ">wdt.running"};
+        if (!wd->watchdog.vector && !wd->watchdog.irq[0].pool) avr_init_irq(&avr->irq_pool, wd->watchdog.irq, 0, AVR_INT_IRQ_COUNT, names);
+    }
     avr->frequency = 16000000;
     avr->vcc = avr->avcc = 5000;   /* millivolts: a 5 V board */
 
     uint32_t size = 0, start = 0;
-    uint8_t *code = read_ihex_file(argv[2], &size, &start);
-    if (!code) {
-        fprintf(stderr, "evia_sim: can't read %s\n", argv[2]);
-        return 2;
+    if (strcmp(argv[2], "-") != 0) {
+        uint8_t *code = read_ihex_file(argv[2], &size, &start);
+        if (!code) {
+            fprintf(stderr, "evia_sim: can't read %s\n", argv[2]);
+            return 2;
+        }
+        avr_loadcode(avr, code, size, start);
+        free(code);
     }
-    avr_loadcode(avr, code, size, start);
-    free(code);
     avr->pc = 0;
+    for (int i = 3; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "--boot") != 0) continue;
+        uint8_t *boot = read_ihex_file(argv[i + 1], &size, &start);
+        if (!boot) {
+            fprintf(stderr, "evia_sim: can't read %s\n", argv[i + 1]);
+            return 2;
+        }
+        avr_loadcode(avr, boot, size, start);
+        free(boot);
+        avr->reset_pc = start;     /* BOOTRST: resets go to the bootloader */
+        avr->pc = start;
+        avr_regbit_clear(avr, avr->reset_flags.porf);
+        avr_regbit_set(avr, avr->reset_flags.extrf);   /* as if the reset pin had been pulsed (DTR) */
+    }
 
     const char names[] = {'0', '1'};
     for (unsigned i = 0; i < sizeof names; i++) {
         uint32_t flags = 0;
         if (avr_ioctl(avr, AVR_IOCTL_UART_GET_FLAGS(names[i]), &flags) < 0) continue;   /* no such UART */
-        flags &= ~AVR_UART_FLAG_STDIO;
+        flags &= ~(AVR_UART_FLAG_STDIO | AVR_UART_FLAG_POLL_SLEEP);   /* no stdio; no usleep on every poll of the status */
         avr_ioctl(avr, AVR_IOCTL_UART_SET_FLAGS(names[i]), &flags);
         avr_irq_t *out = avr_io_getirq(avr, AVR_IOCTL_UART_GETIRQ(names[i]), UART_IRQ_OUTPUT);
         if (out) avr_irq_register_notify(out, uart_out, (void *) (intptr_t) i);
@@ -214,6 +311,20 @@ int main(int argc, char **argv) {
             i--;
             continue;
         }
+        if (!strcmp(argv[i], "--pty")) {
+            pty = posix_openpt(O_RDWR | O_NOCTTY);
+            if (pty < 0 || grantpt(pty) || unlockpt(pty) || !uart_in[0]) {
+                fprintf(stderr, "evia_sim: no pseudo-terminal\n");
+                return 2;
+            }
+            fcntl(pty, F_SETFL, O_NONBLOCK);
+            fprintf(stderr, "evia_sim: pty %s\n", ptsname(pty));
+            avr_irq_register_notify(avr_io_getirq(avr, AVR_IOCTL_UART_GETIRQ('0'), UART_IRQ_OUT_XON), uart_xon, NULL);
+            avr_irq_register_notify(avr_io_getirq(avr, AVR_IOCTL_UART_GETIRQ('0'), UART_IRQ_OUT_XOFF), uart_xoff_on, NULL);
+            i--;
+            continue;
+        }
+        if (!strcmp(argv[i], "--boot")) continue;   /* loaded above */
         if (i + 1 >= argc) {
             fprintf(stderr, "evia_sim: option %s needs a value\n", argv[i]);
             return 2;
@@ -248,9 +359,40 @@ int main(int argc, char **argv) {
     }
 
     avr_cycle_count_t limit = (avr_cycle_count_t) (seconds * avr->frequency);
+    long long t0 = 0;
+    if (pty >= 0) {             /* wait for the uploader, then keep to real time */
+        fflush(stderr);
+        uint8_t c;
+        for (;;) {
+            ssize_t n = read(pty, &c, 1);
+            if (n == 1) break;
+            usleep(1000);
+        }
+        pty_pending = c;
+        avr_cycle_timer_register(avr, avr->frequency / 11520, pty_tick, NULL);
+        t0 = wall_us();
+    }
     int state = cpu_Running;
-    while (state != cpu_Done && state != cpu_Crashed) {
+    avr_cycle_count_t paced = 0;
+    long long before_us = 0;      /* simulated time before the last reset (a reset sets the cycle count to 0) */
+    for (;;) {
         state = avr_run(avr);
+        if (state == cpu_Done && pty >= 0 && avr->reset_pc && avr->pc >= avr->reset_pc) {
+            /* the bootloader waits for its watchdog to reset the chip (rjmp .-2, interrupts off): reset it */
+            before_us += (long long) (avr->cycle / (avr->frequency / 1000000));
+            avr_regbit_set(avr, avr->reset_flags.wdrf);
+            avr_reset(avr);
+            avr_cycle_timer_register(avr, avr->frequency / 11520, pty_tick, NULL);
+            paced = 0;
+            state = cpu_Running;
+            continue;
+        }
+        if (state == cpu_Done || state == cpu_Crashed) break;
+        if (pty >= 0 && avr->cycle - paced > 16000) {
+            paced = avr->cycle;
+            long long ahead = before_us + (long long) (avr->cycle / (avr->frequency / 1000000)) - (wall_us() - t0);
+            if (ahead > 2000) usleep((useconds_t) ahead);
+        }
         if (avr->cycle > limit) {
             fflush(stdout);
             fprintf(stderr, "evia_sim: still running after %.0f s of simulated time\n", seconds);
@@ -258,5 +400,6 @@ int main(int argc, char **argv) {
         }
     }
     fflush(stdout);
+    if (getenv("EVIA_SIM_DEBUG")) fprintf(stderr, "evia_sim: stopped, state %d, pc %05x\n", state, avr->pc);
     return state == cpu_Crashed ? 4 : 0;
 }
