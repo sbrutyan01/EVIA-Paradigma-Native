@@ -10,6 +10,7 @@
 #
 # Usage: [EVIA_SIM=path] scripts/check-rtos.sh [jar]
 set -uo pipefail
+export LC_ALL=C          # one sort order everywhere (the .lines file is sorted this way)
 JAR="${1:-$(ls target/evia-paradigma-*.jar | grep -v original | sort -V | tail -n 1)}"
 EVIA_SIM="${EVIA_SIM:-build/evia_sim}"
 OUT=build/rtos-checks
