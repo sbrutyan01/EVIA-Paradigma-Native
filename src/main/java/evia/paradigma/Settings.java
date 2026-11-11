@@ -669,6 +669,10 @@ final class Settings {
         listeners.add(r);
     }
 
+    static void removeListener(Runnable r) {
+        listeners.remove(r);
+    }
+
     /** Something outside Settings changed what the tools are (a package was installed or removed). */
     static void changed() {
         fire();

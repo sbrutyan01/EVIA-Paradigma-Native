@@ -11,14 +11,16 @@
   Visual block programming compiled straight to executables: no compiler, no assembler, no linker.
   <br><br>
   <a href="https://github.com/sbrutyan01/EVIA-Paradigma-Native/actions/workflows/build.yml"><img src="https://github.com/sbrutyan01/EVIA-Paradigma-Native/actions/workflows/build.yml/badge.svg" alt="build"></a>
-  <a href="https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/latest"><img src="https://img.shields.io/badge/version-1.1.0-blue" alt="version 1.1.0"></a>
+  <a href="https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/latest"><img src="https://img.shields.io/badge/version-1.2.0-blue" alt="version 1.2.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
 </p>
 
 Drag blocks onto a canvas, wire them together, define **classes** with fields, a constructor and methods, keep your
 work in **projects** under **Git**, and press **Run** to try the program. Then **Build executable** (F7): the blocks
 become a **Linux x86-64 program** written by EVIA Paradigma Native itself, machine code and executable file included.
-Nothing else is needed on the computer: no C compiler, no assembler, no linker, no libraries.
+Nothing else is needed on the computer: no C compiler, no assembler, no linker, no libraries. Or pick an **AVR
+chip** as the target (ATmega8, ATmega16, ATmega32, ATmega2560): **Build .hex** writes its flash, and **Upload** puts it
+on the board through the board's bootloader, with no avr-gcc and no avrdude.
 
 EVIA Paradigma Native is a fork of [EVIA Paradigma](https://github.com/sbrutyan01/EVIA-Paradigma) 0.11.0, which
 generates source code in many languages for computers, phones, microcontrollers and FPGAs. This project goes the other
@@ -28,11 +30,11 @@ way: no languages, the program itself.
 
 | System | File |
 |---|---|
-| Windows 10 / 11 (x64) | `EVIA-Paradigma-Native-1.1.0-windows-x64.exe` |
-| macOS, Apple Silicon / Intel | `EVIA-Paradigma-Native-1.1.0-macos-arm64.dmg` / `-macos-x64.dmg` |
-| Ubuntu 22.04+ / Debian 12+ | `evia-paradigma-native_1.1.0_amd64.deb` (`/opt/evia-paradigma-native`, command `evia-paradigma-native`) |
-| Any Linux (x86-64) | `EVIA-Paradigma-Native-1.1.0-x86_64.AppImage` |
-| Any OS with Java 25 | `evia-paradigma-native-1.1.0.jar` |
+| Windows 10 / 11 (x64) | `EVIA-Paradigma-Native-1.2.0-windows-x64.exe` |
+| macOS, Apple Silicon / Intel | `EVIA-Paradigma-Native-1.2.0-macos-arm64.dmg` / `-macos-x64.dmg` |
+| Ubuntu 22.04+ / Debian 12+ | `evia-paradigma-native_1.2.0_amd64.deb` (`/opt/evia-paradigma-native`, command `evia-paradigma-native`) |
+| Any Linux (x86-64) | `EVIA-Paradigma-Native-1.2.0-x86_64.AppImage` |
+| Any OS with Java 25 | `evia-paradigma-native-1.2.0.jar` |
 
 From the [latest release](https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/latest). Each installer
 carries its own Java runtime. It installs next to EVIA Paradigma if you have both.
@@ -74,10 +76,35 @@ Enter is pressed. Everything is written by EVIA Paradigma Native itself, tar, gz
 The command line does the same:
 
 ```
-java -jar evia-paradigma-native-1.1.0.jar --native program.evia -o program [--values fast]
+java -jar evia-paradigma-native-1.2.0.jar --native program.evia -o program [--values fast]
 ./program
-java -jar evia-paradigma-native-1.1.0.jar --run program.evia        # the interpreter
-java -jar evia-paradigma-native-1.1.0.jar --export-app program.evia ~/apps --name "My App" --version 1.0
+java -jar evia-paradigma-native-1.2.0.jar --run program.evia        # the interpreter
+java -jar evia-paradigma-native-1.2.0.jar --export-app program.evia ~/apps --name "My App" --version 1.0
+```
+
+## AVR chips
+
+**Target** in the toolbar picks what Build makes: a Linux x86-64 executable, or the program for an AVR chip, with the
+chip's **Clock**. With a chip, the palette has the board blocks it runs.
+
+| | |
+|---|---|
+| Chips | ATmega8, ATmega16, ATmega32 (MightyCore's pin numbers), ATmega2560 (Arduino Mega) |
+| Blocks | everything above, plus Pin Mode, Digital Read / Write, Analog Read / Write (PWM), UART Open / Write / Read, Delay, Millis |
+| Numbers | fast values: IEEE 32-bit floats (in AVR assembly), printed as Run prints them; text only in Print |
+| Print and Input | the serial port, 115200 baud; Input reads a line |
+| Size | blink with its prints: 5.5 KB, of the 7.5 KB the ATmega8 has beside its bootloader |
+
+- **Build .hex** (F7) writes the Intel HEX file and tells how much flash and RAM the program takes.
+- **Upload** (F6) builds and writes it through the board's bootloader over USB: the Arduino Mega 2560's (STK500 v2), or
+  Optiboot (STK500 v1) as MiniCore (ATmega8) and MightyCore (ATmega16, ATmega32) install it. Every page is read back.
+  Then the Output window shows what the program prints, and the Input field sends it lines.
+- **Run → Chip Upload Settings...**: the serial port, or an ISP programmer through avrdude (USBasp, Arduino as ISP,
+  AVRISP mkII) for a chip without a bootloader.
+- **File → Open Example → AVR Chips**: blink, button, fade, analog meter, a class with a pin, UART echo.
+
+```
+java -jar evia-paradigma-native-1.2.0.jar --avr blink.evia --chip atmega8 -o blink.hex --upload /dev/ttyUSB0
 ```
 
 ## How it works
@@ -86,13 +113,17 @@ The blocks are lowered to a small internal language: every block becomes a label
 block of memory with its fields, a method a function that returns the number of the Exit it left through. The
 runtime (strings, buffered output, Input, errors, big whole numbers for exact number conversion) is written in the
 same language, in `src/main/resources/evia/paradigma/native/`. `NativeLang` compiles both to x86-64 with
-`NativeAsm`, and `NativeElf` writes the file.
+`NativeAsm`, and `NativeElf` writes the file. For AVR chips `AvrGen` compiles the same language to AVR machine code
+(`AvrAsm`, with `AvrFloat` for the floats and the runtime in `native/avr/`), and `AvrUpload` speaks the bootloaders'
+protocols over the serial port.
 
 ## Building from source
 
 ```
-mvn package                     # target/evia-paradigma-native-1.1.0.jar
+mvn package                     # target/evia-paradigma-native-1.2.0.jar
 scripts/check-native.sh         # every example and test against the interpreter, 100,000 numbers against Java
+scripts/check-avr.sh            # AVR programs in simavr against the interpreter, random tests, uploads (needs simavr:
+                                #   scripts/simavr/build.sh, as in .github/workflows/build.yml)
 scripts/check-app.sh            # the editor, classes, modules, projects and Git
 packaging/package.sh linux      # the .deb and the AppImage (windows, macos-arm64, macos-x64 on those systems)
 ```

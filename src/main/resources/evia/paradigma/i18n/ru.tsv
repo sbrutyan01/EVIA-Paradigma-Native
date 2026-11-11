@@ -478,3 +478,19 @@ Version:	Версия:
 Description:	Описание:
 For Linux on 64-bit Intel and AMD processors. The program needs nothing else there: no libraries, no Java. Its menu entry opens a terminal, because Print and Input talk through one.	Для Linux на 64-битных процессорах Intel и AMD. Программе там больше ничего не нужно: ни библиотек, ни Java. Её пункт меню открывает терминал, потому что Print и Input работают через него.
 Export App	Экспорт приложения
+Upload with:	Загружать через:
+This chip:	Этот чип:
+The bootloader needs no other software: it is how an Arduino Mega 2560 and boards with Optiboot (MiniCore for the ATmega8, MightyCore for the ATmega16 and ATmega32) are programmed over USB. A chip without a bootloader is programmed with an ISP programmer through avrdude, which Settings > Packages can install. After the upload the port shows what the program prints.	Загрузчику не нужны другие программы: так по USB программируются Arduino Mega 2560 и платы с Optiboot (MiniCore для ATmega8, MightyCore для ATmega16 и ATmega32). Чип без загрузчика программируется ISP-программатором через avrdude, который можно установить в Настройки > Пакеты. После загрузки порт показывает то, что печатает программа.
+Chip Upload	Загрузка в чип
+Chip Upload Settings...	Настройки загрузки в чип...
+AVR Chips (ATmega8, 16, 32, Mega 2560)	Чипы AVR (ATmega8, 16, 32, Mega 2560)
+Build .hex	Собрать .hex
+Compile the blocks straight to the chip's flash, an Intel HEX file (F7)	Скомпилировать блоки прямо во флеш-память чипа, файл Intel HEX (F7)
+Build, write it to the chip, then show what it prints; Input sends it lines (F6)	Собрать, записать в чип и показать, что он печатает; поле Ввод отправляет ему строки (F6)
+Upload to the Chip	Загрузить в чип
+On the chip itself; Run simulates an Arduino board.	На самом чипе; Запуск имитирует плату Arduino.
+ Clock:	 Частота:
+<html>What Build makes, straight from the blocks:<br><b>Linux x86-64</b>: a program for Linux on 64-bit Intel and AMD processors<br><b>An AVR chip</b>: its flash (Intel HEX), which Upload writes to the board</html>	<html>Что делает Сборка прямо из блоков:<br><b>Linux x86-64</b>: программу для Linux на 64-битных процессорах Intel и AMD<br><b>Чип AVR</b>: содержимое его флеш-памяти (Intel HEX), которое Загрузка записывает в плату</html>
+The chip's clock (its crystal): millis, Delay and the serial port's speed depend on it	Тактовая частота чипа (его кварц): от неё зависят millis, Задержка и скорость последовательного порта
+ Target:	 Цель:
+AVR chips use fast values: numbers (32-bit floats), text only in Print	Чипы AVR используют быстрые значения: числа (32-битные float), текст только в Печати

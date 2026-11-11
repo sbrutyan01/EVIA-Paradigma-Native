@@ -131,12 +131,15 @@ final class MainFrame extends JFrame {
         if (App.nativeEdition()) {
             JButton build = button("Build executable", e -> buildExecutable(false));
             build.setToolTipText(Text.t("Compile the blocks straight to a program for this computer (F7)"));
+            buildButton = build;
             tb.add(build);
             tb.add(new TargetBar());
             JButton runExe = button("Run executable", e -> buildExecutable(true));
             runExe.setToolTipText(Text.t("Build, then run the program; Input goes to it from the field under the output (F6)"));
+            runButton = runExe;
             tb.add(runExe);
             JButton export = button("Export app...", e -> exportApp());
+            exportButton = export;
             export.setToolTipText(Text.t("The program as an app for any Linux: the executable, a portable .tar.gz and a .deb"));
             tb.add(export);
         } else {
@@ -305,11 +308,17 @@ final class MainFrame extends JFrame {
         run.add(new JMenuItem(stopAction));
         run.addSeparator();
         if (App.nativeEdition()) {
-            run.add(item("Build Executable", KeyStroke.getKeyStroke(KeyEvent.VK_F7, 0), e -> buildExecutable(false)));
-            run.add(item("Run Executable", KeyStroke.getKeyStroke(KeyEvent.VK_F6, 0), e -> buildExecutable(true)));
+            buildItem = item("Build Executable", KeyStroke.getKeyStroke(KeyEvent.VK_F7, 0), e -> buildExecutable(false));
+            runItem = item("Run Executable", KeyStroke.getKeyStroke(KeyEvent.VK_F6, 0), e -> buildExecutable(true));
+            run.add(buildItem);
+            run.add(runItem);
             run.add(item("Stop Executable", null, e -> stopExecutable()));
+            run.add(item("Chip Upload Settings...", null, e -> ChipRunner.choose(this, Settings.nativeChip())));
             run.addSeparator();
-            run.add(item("Export App...", KeyStroke.getKeyStroke(KeyEvent.VK_E, MENU | InputEvent.SHIFT_DOWN_MASK), e -> exportApp()));
+            exportItem = item("Export App...", KeyStroke.getKeyStroke(KeyEvent.VK_E, MENU | InputEvent.SHIFT_DOWN_MASK), e -> exportApp());
+            run.add(exportItem);
+            nativeLabels();
+            Settings.onChange(() -> SwingUtilities.invokeLater(this::nativeLabels));
         } else {
             run.add(item("Generate Code", KeyStroke.getKeyStroke(KeyEvent.VK_F7, 0), e -> generateCode()));
             run.add(targetMenu());
@@ -549,7 +558,20 @@ final class MainFrame extends JFrame {
         title = Text.t(title);
         JMenu m = new JMenu(title);
         for (String[] ex : EXAMPLES) m.add(item(ex[1], null, e -> openExample(ex[0])));
-        if (App.nativeEdition()) return m;   // the board, phone and FPGA examples need their languages
+        if (App.nativeEdition()) {
+            // the board examples the AVR chips run (no SPI, I2C or MQTT); opening one picks a chip if none is
+            JMenu chips = new JMenu(Text.t("AVR Chips (ATmega8, 16, 32, Mega 2560)"));
+            for (String[] ex : BOARD_EXAMPLES) {
+                if (ex[0].contains("spi_") || ex[0].contains("i2c_") || ex[0].contains("mqtt_")) continue;
+                chips.add(item(ex[1], null, e -> {
+                    if (Settings.nativeChip() == null) Settings.setNativeChip(AvrChip.ATMEGA2560);
+                    openExample(ex[0]);
+                }));
+            }
+            m.addSeparator();
+            m.add(chips);
+            return m;   // the phone and FPGA examples need their languages
+        }
         JMenu arduino = new JMenu(Text.t("Arduino Boards (Uno, Nano, Mega ...)"));
         JMenu esp32 = new JMenu(Text.t("ESP32 Boards"));
         JMenu pic32 = new JMenu(Text.t("PIC32 Boards"));
@@ -852,8 +874,72 @@ final class MainFrame extends JFrame {
         return Files.createTempDirectory("evia-native").resolve(programName());
     }
 
+    private JButton buildButton, runButton, exportButton;
+    private JMenuItem buildItem, runItem, exportItem;
+    private final ChipRunner chipRunner = new ChipRunner(text -> SwingUtilities.invokeLater(() -> console.append(text)));
+    private boolean uploading;
+
+    /** The Native edition's buttons and menu items say what they do for the target: an executable, or a chip. */
+    private void nativeLabels() {
+        if (buildButton == null || buildItem == null) return;
+        boolean chip = Settings.nativeChip() != null;
+        buildButton.setText(chip ? Text.t("Build .hex") : Text.t("Build executable"));
+        buildButton.setToolTipText(chip ? Text.t("Compile the blocks straight to the chip's flash, an Intel HEX file (F7)")
+                : Text.t("Compile the blocks straight to a program for this computer (F7)"));
+        runButton.setText(chip ? Text.t("Upload") : Text.t("Run executable"));
+        runButton.setToolTipText(chip ? Text.t("Build, write it to the chip, then show what it prints; Input sends it lines (F6)")
+                : Text.t("Build, then run the program; Input goes to it from the field under the output (F6)"));
+        buildItem.setText(chip ? Text.t("Build .hex") : Text.t("Build Executable"));
+        runItem.setText(chip ? Text.t("Upload to the Chip") : Text.t("Run Executable"));
+        exportButton.setEnabled(!chip);
+        exportItem.setEnabled(!chip);
+    }
+
+    /** Build .hex (F7) and Upload (F6) for an AVR chip. */
+    private void buildChip(AvrChip chip, boolean upload) {
+        if (uploading) return;
+        if (chipRunner.running()) chipRunner.stop();
+        long clock = Settings.nativeClock();
+        long started = System.nanoTime();
+        Path hex;
+        NativeCompiler.AvrResult r;
+        try {
+            r = NativeCompiler.compileAvr(lib, chip, clock);
+            Path exe = executablePath();
+            hex = exe.resolveSibling(exe.getFileName() + ".hex");
+            Files.writeString(hex, r.hex(), StandardCharsets.US_ASCII);
+        } catch (FlowException e) {
+            console.setText("");
+            reportError(e);
+            return;
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            console.setText(">> " + e.getMessage() + "\n");
+            status.setText(e.getMessage());
+            return;
+        } catch (IOException e) {
+            status.setText("Could not write the .hex: " + e.getMessage());
+            return;
+        }
+        status.setText(String.format("Built %s: %,d bytes of flash (of %,d), %,d bytes of RAM, %s at %s MHz, in %d ms.",
+                hex, r.flashBytes(), chip.flashBytes() - chip.bootloaderBytes(), r.ramBytes(), chip.display(),
+                clock % 1_000_000 == 0 ? String.valueOf(clock / 1_000_000) : String.valueOf(clock / 1e6),
+                (System.nanoTime() - started) / 1_000_000));
+        if (!upload) return;
+        if (Settings.serialPort().isEmpty() && !Settings.nativeUpload().equals("usbasp") && !ChipRunner.choose(this, chip)) return;
+        console.setText("");
+        uploading = true;
+        chipRunner.upload(chip, hex, r.hex(), () -> {
+            exeInput.setEnabled(true);
+            exeInput.requestFocusInWindow();
+        }, () -> uploading = false);
+    }
+
     /** Build Executable (F7) and Run Executable (F6): straight from the blocks to a program, no compiler. */
     private void buildExecutable(boolean run) {
+        if (App.nativeEdition() && Settings.nativeChip() != null) {
+            buildChip(Settings.nativeChip(), run);
+            return;
+        }
         if (worker != null || exeProcess != null) return;
         for (FlowCanvas c : lib.canvases()) c.clearMarks();
         Target t = Settings.target();
@@ -994,6 +1080,11 @@ final class MainFrame extends JFrame {
         java.io.Writer w = exeStdin;
         String line = exeInput.getText();
         exeInput.setText("");
+        if (chipRunner.running()) {
+            console.append(line + "\n");
+            chipRunner.send(line);
+            return;
+        }
         if (w == null) return;
         console.append(line + "\n");
         try {
@@ -1005,6 +1096,10 @@ final class MainFrame extends JFrame {
     }
 
     private void stopExecutable() {
+        if (chipRunner.running()) {
+            chipRunner.stop();
+            exeInput.setEnabled(false);
+        }
         Process p = exeProcess;
         if (p != null) p.destroyForcibly();
     }

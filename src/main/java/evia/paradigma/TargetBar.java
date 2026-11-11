@@ -14,6 +14,11 @@ final class TargetBar extends JPanel {
     private final JComboBox<Target.Values> values = new JComboBox<>(Target.Values.values());
     private final JComboBox<Board> board = new JComboBox<>();
     private final JLabel boardLabel = new JLabel(Text.t(" Board:"));
+    /** Native edition: what Build makes - an executable for Linux x86-64 (null) or a program for an AVR chip. */
+    private final JComboBox<Object> machine = new JComboBox<>();
+    private final JComboBox<String> clock = new JComboBox<>(new String[]{"16 MHz", "8 MHz", "20 MHz", "12 MHz", "1 MHz"});
+    private final JLabel clockLabel = new JLabel(Text.t(" Clock:"));
+    private static final String LINUX = "Linux x86-64";
     private boolean updating;
     private static final String valuesTip = "<html><b>Safe</b>: numbers and text with the interpreter's checks (undefined variables, division by zero ...)"
             + "<br><b>Fast</b>: plain <code>double</code> numbers, text only in Print, no runtime checks</html>";
@@ -51,12 +56,34 @@ final class TargetBar extends JPanel {
             // no languages: the values only, and what the executable runs on
             for (Component c : getComponents()) c.setVisible(false);
             removeAll();
+            machine.addItem(LINUX);
+            for (AvrChip c : AvrChip.values()) machine.addItem(c);
+            machine.setRenderer(new DefaultListCellRenderer() {
+                @Override public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                                      boolean selected, boolean focus) {
+                    super.getListCellRendererComponent(list, value, index, selected, focus);
+                    if (value instanceof AvrChip c) setText(c.display());
+                    return this;
+                }
+            });
+            machine.setToolTipText(Text.t("<html>What Build makes, straight from the blocks:<br><b>Linux x86-64</b>: a program for Linux on 64-bit Intel and AMD processors<br><b>An AVR chip</b>: its flash (Intel HEX), which Upload writes to the board</html>"));
+            clock.setToolTipText(Text.t("The chip's clock (its crystal): millis, Delay and the serial port's speed depend on it"));
+            add(new JLabel(Text.t(" Target:")));
+            add(machine);
+            add(clockLabel);
+            add(clock);
             add(new JLabel(Text.t(" Values:")));
             values.setVisible(true);
             add(values);
-            JLabel what = new JLabel(Text.t("  Executable: Linux x86-64"));
-            what.setToolTipText(Text.t("Build makes a program for Linux on 64-bit Intel and AMD processors, straight from the blocks"));
-            add(what);
+            for (JComboBox<?> c : new JComboBox<?>[]{machine, clock}) c.setFocusable(false);
+            machine.addActionListener(e -> {
+                if (!updating) Settings.setNativeChip(machine.getSelectedItem() instanceof AvrChip c ? c : null);
+            });
+            clock.addActionListener(e -> {
+                if (!updating && clock.getSelectedItem() instanceof String v) {
+                    Settings.setNativeClock(Math.round(Double.parseDouble(v.replace(" MHz", "")) * 1_000_000));
+                }
+            });
         }
         refresh();
         lang.addActionListener(e -> changed());
@@ -90,7 +117,17 @@ final class TargetBar extends JPanel {
             board.setSelectedItem(Settings.board(t.lang()));
             board.setVisible(t.embedded() && !App.nativeEdition());
             boardLabel.setVisible(t.embedded() && !App.nativeEdition());
-            if (App.nativeEdition()) values.setEnabled(true);
+            if (App.nativeEdition()) {
+                AvrChip chip = Settings.nativeChip();
+                machine.setSelectedItem(chip != null ? chip : LINUX);
+                clock.setSelectedItem(Settings.nativeClock() % 1_000_000 == 0 ? Settings.nativeClock() / 1_000_000 + " MHz" : "16 MHz");
+                clock.setVisible(chip != null);
+                clockLabel.setVisible(chip != null);
+                // the chips have fast values only: 32-bit floats
+                values.setEnabled(chip == null);
+                if (chip != null) values.setSelectedItem(Target.Values.FAST);
+                values.setToolTipText(chip != null ? Text.t("AVR chips use fast values: numbers (32-bit floats), text only in Print") : Text.t(valuesTip));
+            }
             revalidate();
         } finally {
             updating = false;

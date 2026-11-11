@@ -267,7 +267,7 @@ final class Cli {
                     need(args, 2);
                     AvrChip chip = AvrChip.ATMEGA2560;
                     long clock = 16000000;
-                    String output = null;
+                    String output = null, port = null;
                     boolean lowered = false;
                     for (int i = 2; i < args.length; i++) {
                         String opt = args[i];
@@ -281,6 +281,7 @@ final class Cli {
                             case "-o" -> output = v;
                             case "--chip" -> chip = AvrChip.of(v);
                             case "--clock" -> clock = Long.parseLong(v.replace("MHz", "000000").replace("mhz", "000000"));
+                            case "--upload" -> port = v;
                             default -> throw new IllegalArgumentException("unknown option " + opt + " (see --help)");
                         }
                     }
@@ -291,6 +292,11 @@ final class Cli {
                     out.println(String.format("wrote %s: %,d bytes of flash (of %,d), %,d bytes of RAM (of %,d), %s at %.1f MHz",
                             hex, r.flashBytes(), chip.flashBytes() - chip.bootloaderBytes(), r.ramBytes(),
                             chip.ramEnd() + 1 - chip.ramStart(), chip.display(), clock / 1e6));
+                    if (port != null) {
+                        // through the board's bootloader (Optiboot: STK500 v1; Mega 2560: v2), no avrdude
+                        AvrUpload.viaBootloader(port, chip, r.hex(), s -> out.println(s));
+                        out.println("uploaded to the " + chip.display() + " on " + port);
+                    }
                     return 0;
                 }
                 case "--export-app" -> {
@@ -414,9 +420,10 @@ final class Cli {
                                                                                      a Linux x86-64 executable straight from
                                                                                      the blocks: no compiler or linker needed
                               java -jar evia-paradigma.jar --avr program.evia --chip CHIP [-o FILE.hex] [--clock HZ]
-                                                                                     an AVR chip's program straight from the
+                                  [--upload PORT]                                    an AVR chip's program straight from the
                                                                                      blocks (atmega8, atmega16, atmega32,
-                                                                                     atmega2560), no avr-gcc
+                                                                                     atmega2560), no avr-gcc; --upload writes
+                                                                                     it through the board's bootloader
                               java -jar evia-paradigma.jar --export-app program.evia DIR [--name N] [--command C]
                                   [--version V] [--description D] [--values safe|fast]
                                                                                      the program as an app for any x86-64

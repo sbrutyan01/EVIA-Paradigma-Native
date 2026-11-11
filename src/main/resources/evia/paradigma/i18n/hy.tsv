@@ -478,3 +478,19 @@ Version:	Տարբերակ՝
 Description:	Նկարագրություն՝
 For Linux on 64-bit Intel and AMD processors. The program needs nothing else there: no libraries, no Java. Its menu entry opens a terminal, because Print and Input talk through one.	Linux-ի համար՝ 64-բիթանոց Intel և AMD պրոցեսորներով։ Ծրագրին այնտեղ ուրիշ ոչինչ պետք չէ՝ ոչ գրադարաններ, ոչ Java։ Նրա ընտրացանկի կետը բացում է տերմինալ, քանի որ Print-ը և Input-ը աշխատում են դրա միջոցով։
 Export App	Արտահանել հավելվածը
+Upload with:	Վերբեռնել՝
+This chip:	Այս չիպը՝
+The bootloader needs no other software: it is how an Arduino Mega 2560 and boards with Optiboot (MiniCore for the ATmega8, MightyCore for the ATmega16 and ATmega32) are programmed over USB. A chip without a bootloader is programmed with an ISP programmer through avrdude, which Settings > Packages can install. After the upload the port shows what the program prints.	Բեռնիչին այլ ծրագիր պետք չէ. այդպես են USB-ով ծրագրավորվում Arduino Mega 2560-ը և Optiboot-ով սալիկները (MiniCore՝ ATmega8-ի, MightyCore՝ ATmega16-ի և ATmega32-ի համար)։ Առանց բեռնիչի չիպը ծրագրավորվում է ISP ծրագրավորիչով avrdude-ի միջոցով, որը կարելի է տեղադրել Կարգավորումներ > Փաթեթներ-ից։ Վերբեռնումից հետո պորտը ցույց է տալիս, թե ինչ է տպում ծրագիրը։
+Chip Upload	Վերբեռնում չիպ
+Chip Upload Settings...	Չիպի վերբեռնման կարգավորումներ...
+AVR Chips (ATmega8, 16, 32, Mega 2560)	AVR չիպեր (ATmega8, 16, 32, Mega 2560)
+Build .hex	Կառուցել .hex
+Compile the blocks straight to the chip's flash, an Intel HEX file (F7)	Թարգմանել բլոկներն ուղիղ չիպի ֆլեշ հիշողության մեջ՝ Intel HEX ֆայլ (F7)
+Build, write it to the chip, then show what it prints; Input sends it lines (F6)	Կառուցել, գրել չիպի մեջ, ապա ցույց տալ, թե ինչ է այն տպում. Մուտքն ուղարկում է տողեր (F6)
+Upload to the Chip	Վերբեռնել չիպ
+On the chip itself; Run simulates an Arduino board.	Հենց չիպի վրա. Գործարկումը նմանակում է Arduino սալիկ։
+ Clock:	 Հաճախություն՝
+<html>What Build makes, straight from the blocks:<br><b>Linux x86-64</b>: a program for Linux on 64-bit Intel and AMD processors<br><b>An AVR chip</b>: its flash (Intel HEX), which Upload writes to the board</html>	<html>Ինչ է անում Կառուցումը ուղիղ բլոկներից՝<br><b>Linux x86-64</b>. ծրագիր Linux-ի համար 64-բիթ Intel և AMD պրոցեսորներով<br><b>AVR չիպ</b>. նրա ֆլեշ հիշողությունը (Intel HEX), որը Վերբեռնումը գրում է սալիկի մեջ</html>
+The chip's clock (its crystal): millis, Delay and the serial port's speed depend on it	Չիպի տակտային հաճախությունը (նրա քվարցը). դրանից են կախված millis-ը, Ուշացումը և հաջորդական պորտի արագությունը
+ Target:	 Թիրախ՝
+AVR chips use fast values: numbers (32-bit floats), text only in Print	AVR չիպերն օգտագործում են արագ արժեքներ՝ թվեր (32-բիթ float), տեքստ միայն Տպել-ում

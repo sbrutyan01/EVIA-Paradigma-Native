@@ -16,6 +16,7 @@ final class PalettePanel extends JPanel {
     private final Library lib;
     private final FlowCanvas target;
     private final Runnable rebuild = this::build;
+    private final Runnable rebuildLater = () -> SwingUtilities.invokeLater(this::build);   // the target changed
     private int dropOffset;
 
     PalettePanel(Library lib, FlowCanvas target) {
@@ -30,12 +31,14 @@ final class PalettePanel extends JPanel {
     public void addNotify() {
         super.addNotify();
         lib.addListener(rebuild);
+        if (App.nativeEdition()) Settings.onChange(rebuildLater);
         build();
     }
 
     @Override
     public void removeNotify() {
         lib.removeListener(rebuild);
+        Settings.removeListener(rebuildLater);
         super.removeNotify();
     }
 
@@ -49,12 +52,25 @@ final class PalettePanel extends JPanel {
         }
 
         if (App.nativeEdition()) {
-            // an executable on this computer: of the board blocks, only time
+            AvrChip chip = Settings.nativeChip();
             add(Box.createVerticalStrut(10));
-            add(header(Text.t("Time")));
-            for (BlockType t : new BlockType[]{BlockType.DELAY, BlockType.MILLIS}) {
-                add(item(Text.t(t.title), t.color, Text.t(t.hint), "TYPE:" + t.name(), null, null));
-                add(Box.createVerticalStrut(5));
+            if (chip == null) {
+                // an executable on this computer: of the board blocks, only time
+                add(header(Text.t("Time")));
+                for (BlockType t : new BlockType[]{BlockType.DELAY, BlockType.MILLIS}) {
+                    add(item(Text.t(t.title), t.color, Text.t(t.hint), "TYPE:" + t.name(), null, null));
+                    add(Box.createVerticalStrut(5));
+                }
+            } else {
+                // a program for an AVR chip: the board blocks the chip has
+                add(header(chip.display()));
+                for (BlockType t : BlockType.values()) {
+                    if (!t.isBoard() || !AvrChip.supports(t)) continue;
+                    add(item(Text.t(t.title), t.color, "<html>" + Text.t(t.hint) + "<br><i>"
+                                    + Text.t("On the chip itself; Run simulates an Arduino board.") + "</i></html>",
+                            "TYPE:" + t.name(), null, null));
+                    add(Box.createVerticalStrut(5));
+                }
             }
         }
 

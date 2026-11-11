@@ -22,6 +22,18 @@ jobs:
         run: scripts/check-app.sh
       - name: Native executables against the interpreter, and numbers against Java
         run: scripts/check-native.sh
+      - name: simavr (built as scripts/simavr/evia_sim)
+        env:
+          SIMAVR_COMMIT: cb4aa607634469a6c1e1170fae30ece0672d4405
+        run: |
+          sudo apt-get install -y -q avr-libc > /dev/null
+          git init -q "$RUNNER_TEMP/simavr"
+          git -C "$RUNNER_TEMP/simavr" fetch -q --depth 1 https://github.com/buserror/simavr.git "$SIMAVR_COMMIT"
+          git -C "$RUNNER_TEMP/simavr" checkout -q FETCH_HEAD
+          mkdir -p build
+          scripts/simavr/build.sh "$RUNNER_TEMP/simavr" /usr/lib/avr/include build/evia_sim
+      - name: "AVR chips: programs in simavr against the interpreter, random tests, uploads through real bootloaders"
+        run: scripts/check-avr.sh
       - uses: actions/upload-artifact@v4
         with:
           name: evia-paradigma-native
