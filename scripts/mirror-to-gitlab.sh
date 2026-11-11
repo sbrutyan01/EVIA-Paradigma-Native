@@ -12,15 +12,15 @@
 # the environment, never written to a file or to .git/config, and masked out of the output.
 #
 #   GITLAB_URL      the GitLab, default https://git.evia.am
-#   GITLAB_PROJECT  the project path, default evia/evia-paradigma
-#   GITHUB_REPO     where to copy from, default sbrutyan01/EVIA-Paradigma
+#   GITLAB_PROJECT  the project path, default evia/evia-paradigma-native
+#   GITHUB_REPO     where to copy from, default sbrutyan01/EVIA-Paradigma-Native
 #   KEEP            a folder to leave the downloaded installers in (default: a temporary one)
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
 URL="${GITLAB_URL:-https://git.evia.am}"
-PROJECT="${GITLAB_PROJECT:-evia/evia-paradigma}"
-GH_REPO="${GITHUB_REPO:-sbrutyan01/EVIA-Paradigma}"
+PROJECT="${GITLAB_PROJECT:-evia/evia-paradigma-native}"
+GH_REPO="${GITHUB_REPO:-sbrutyan01/EVIA-Paradigma-Native}"
 PRUNE=0
 ONLY=""
 

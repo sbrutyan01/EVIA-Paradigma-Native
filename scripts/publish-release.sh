@@ -91,7 +91,7 @@ if ! run git push "$GH" "refs/tags/$TAG"; then
     echo "       (the username does not matter), or run  gh auth login  if gh is installed;" >&2
     echo "     - or SSH: add this machine's ~/.ssh/id_ed25519.pub at github.com/settings/keys" >&2
     echo "       and switch the remote with" >&2
-    echo "         git remote set-url $GH git@github.com:sbrutyan01/EVIA-Paradigma.git" >&2
+    echo "         git remote set-url $GH git@github.com:sbrutyan01/EVIA-Paradigma-Native.git" >&2
     echo "   The tag is made and waiting; re-run this script once git can authenticate." >&2
     exit 1
 fi
@@ -114,8 +114,8 @@ if [ "$GITLAB" = 1 ]; then
 fi
 
 say "done"
-echo "release : https://github.com/sbrutyan01/EVIA-Paradigma/releases/tag/$TAG   (a few minutes)"
-echo "site    : https://sbrutyan01.github.io/EVIA-Paradigma/"
+echo "release : https://github.com/sbrutyan01/EVIA-Paradigma-Native/releases/tag/$TAG   (a few minutes)"
+echo "gitlab  : https://git.evia.am/evia/evia-paradigma-native"
 echo
 echo "All of the releases and their installers can be copied to the GitLab afterwards with:"
 echo "    GITLAB_TOKEN=... scripts/mirror-to-gitlab.sh"
